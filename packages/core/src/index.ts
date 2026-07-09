@@ -1,0 +1,58 @@
+export { createDeepSeekClient, collectStreamResponse } from './provider';
+export type { DeepSeekClient, SendMessageParams, SendMessageResult, FinishReason, TokenUsage } from './types/provider';
+export type { Message, ToolCall, ToolDefinition, AgentStatus, ToolResult, AgentOptions, TurnOutput, ChatRequest, ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter, StreamEvent } from './types';
+export type { TrimResult, TrimOptions, TrimStatus, CompressionStats, Summarizer } from './types';
+// Agent Loop 模块导出
+export { AgentLoop } from './agent/loop.js';
+export { StepBuilder, ContextWindowError } from './agent/step-builder.js';
+export { ToolCallAccumulator } from './agent/tool-call-accumulator.js';
+export { executeAll } from './agent/tool-executor.js';
+export { LoopDetector } from './agent/loop-detector.js';
+
+// Context Management 模块导出
+export {
+  createContextManager,
+  redactSensitiveText,
+  estimateMessageTokens,
+  estimateMessagesTokens,
+  estimateToolDefinitions,
+  estimateTotal,
+  estimateMsgBudgetTokens,
+  groupByTurns,
+  getRecentTurns,
+  getTurnCount,
+  removeOldestTurns,
+  getSystemTurn,
+  hasSystemPrompt,
+  alignBoundaryForward,
+  alignBoundaryBackward,
+  findLastUserMessageIdx,
+  findLastAssistantMessageIdx,
+  findTurnPairEnd,
+  pruneOldToolResults,
+  SUMMARY_PREFIX,
+  SUMMARY_END_MARKER,
+  COMPRESSION_NOTE,
+  SUMMARY_TEMPLATE_SECTIONS,
+  formatSummary,
+  stripSummaryPrefix,
+  isContextSummaryContent,
+  buildSummaryPrompt,
+  serializeForSummary,
+  computeSummaryBudget,
+  buildFallbackSummary,
+  createSummarizer,
+} from './context/index.js';
+
+// Config
+export type { ProviderConfig } from './config/types';
+export { loadProviderConfig } from './config/loader.js';
+
+// Tools
+export { createEmptyToolRegistry } from './tools/empty-registry.js';
+
+// Events
+export { createConsoleEmitter } from './events/emitter.js';
+
+// System Prompt
+export { DEFAULT_SYSTEM_PROMPT, formatSystemPrompt } from './system-prompt.js';
