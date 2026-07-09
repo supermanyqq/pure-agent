@@ -6,8 +6,15 @@
  */
 
 import type { Message } from '../types/index.js';
-import type { Summarizer, ChatProvider } from '../types/index.js';
+import type { Summarizer, ChatProvider, SummaryResult, SummarizeOptions } from '../types/index.js';
 import { redactSensitiveText } from './redactor.js';
+import {
+  MIN_SUMMARY_TOKENS,
+  SUMMARY_RATIO,
+  FALLBACK_TURN_MAX_CHARS,
+  FALLBACK_SUMMARY_MAX_CHARS,
+  DEFAULT_COMPLETION_RESERVE,
+} from './types.js';
 
 // ===== 反注入前缀体系 =====
 
@@ -290,9 +297,8 @@ export function computeSummaryBudget(
   contentTokenEstimate: number,
   maxSummaryTokens: number,
 ): number {
-  const budget = Math.ceil(contentTokenEstimate * 0.2);
-  // 先限制在 maxSummaryTokens 内，再确保不低于 2000
-  return Math.min(maxSummaryTokens, Math.max(2_000, budget));
+  const budget = Math.ceil(contentTokenEstimate * SUMMARY_RATIO);
+  return Math.min(maxSummaryTokens, Math.max(MIN_SUMMARY_TOKENS, budget));
 }
 
 // ===== 摘要格式化 =====
@@ -367,7 +373,7 @@ export function buildFallbackSummary(
     // 强制脱敏点 #2：回退摘要提取前脱敏
     const rawContent = redactSensitiveText(msg.content ?? '');
     const compacted =
-      rawContent.length > 700
+      rawContent.length > FALLBACK_TURN_MAX_CHARS
         ? rawContent.slice(0, 685).trim() + ' ...[truncated]'
         : rawContent;
 
@@ -465,9 +471,9 @@ Summary generation was unavailable, so this is a best-effort deterministic
 fallback for ${messages.length} compacted message(s).${reasonText}`;
 
   const summary = formatSummary(body.trim());
-  if (summary.length > 8_000) {
+  if (summary.length > FALLBACK_SUMMARY_MAX_CHARS) {
     return (
-      summary.slice(0, 8_000 - 42).trim() + '\n...[fallback summary truncated]'
+      summary.slice(0, FALLBACK_SUMMARY_MAX_CHARS - 42).trim() + '\n...[fallback summary truncated]'
     );
   }
   return summary;
@@ -483,17 +489,17 @@ fallback for ${messages.length} compacted message(s).${reasonText}`;
  */
 export function createSummarizer(provider: ChatProvider): Summarizer {
   return {
-    async summarize(messages: Message[], signal?: AbortSignal): Promise<string> {
+    async summarize(messages: Message[], options: SummarizeOptions = {}): Promise<SummaryResult> {
       const stream = provider.streamMessage({
         messages,
-        maxTokens: 4096,
+        maxTokens: options.maxSummaryTokens ?? DEFAULT_COMPLETION_RESERVE,
         temperature: 0,
-        signal,
+        signal: options.signal,
       });
 
       let text = '';
       for await (const event of stream) {
-        if (signal?.aborted) {
+        if (options.signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError');
         }
         if (event.type === 'text') {
@@ -502,7 +508,12 @@ export function createSummarizer(provider: ChatProvider): Summarizer {
       }
 
       // 强制脱敏点 #3：摘要返回内容二次脱敏
-      return redactSensitiveText(text.trim());
+      const summary = redactSensitiveText(text.trim());
+      return {
+        summary,
+        tokensUsed: 0, // 实际 token 数由调用方通过 Provider usage 获取
+        method: 'llm',
+      };
     },
   };
 }

@@ -1,12 +1,18 @@
 /**
- * Token 估算器 — 基于字符比率的 token 数近似估算。
+ * Token 计数器 — 提供字符比率估算和 DeepSeek V3 精确计数两种模式。
  *
- * 不依赖 tiktoken 或任何 tokenizer 库。通过 CJK/Latin/Code/Other 字符分类 +
- * 经验比率估算 token 数。每种字符类型有不同的 chars-per-token 比率。
+ * 字符比率估算（默认，热路径）：
+ *   - 不依赖 tokenizer 库，O(n) 字符串扫描
+ *   - 10% 安全余量覆盖 ±5% 估算误差
+ *   - 用于 trimmer 边界判定、StepBuilder 快速检查
  *
- * 提供两种粒度的估算：
- * - estimateMessageTokens(): 精确估算（字符分类 + tool_calls 全量序列化）
- * - estimateMsgBudgetTokens(): 快速估算（chars/4 + overhead，用于尾部预算行走）
+ * DeepSeek V3 精确计数（可选，冷路径）：
+ *   - 加载 tokenizer.json (7.8MB) 后可用
+ *   - 使用 BPE 算法精确计算 token 数
+ *   - 用于校准估算偏差、用户查询、精确窗口管理
+ *   - 调用 initTokenizer() 后自动启用
+ *
+ * 两种模式通过 countMode 参数切换，默认使用估算模式保证热路径性能。
  */
 
 import type { Message, ToolDefinition } from '../types/index.js';
@@ -132,6 +138,93 @@ export function estimateMessageTokens(
   return tokens;
 }
 
+// ─── DeepSeek V3 精确计数（可选，需先 initTokenizer） ───
+
+// 通过 setExactCounter 注入 tokenizer 函数，避免 context → tokenizer 的硬依赖
+let exactCounter: ((text: string) => number) | null = null;
+let exactAvailable = false;
+
+/**
+ * 注册精确 token 计数器。
+ * 由 tokenizer 模块在 initTokenizer() 后调用，或由应用层手动注入。
+ */
+export function setExactCounter(counter: (text: string) => number): void {
+  exactCounter = counter;
+  exactAvailable = true;
+}
+
+/** 检查精确 tokenizer 是否已注入 */
+function isExactAvailable(): boolean {
+  return exactAvailable;
+}
+
+/** 获取已注入的精确计数函数 */
+function getExactCounter(): ((text: string) => number) | null {
+  return exactCounter;
+}
+
+/**
+ * 序列化消息为 DeepSeek chat template 格式的文本（近似）。
+ * 使用简化的特殊 token 标记格式。
+ */
+function serializeMessageForCounting(msg: Message): string {
+  const role = msg.role;
+  let text = `<｜${role[0].toUpperCase()}${role.slice(1)}｜>`;
+
+  if (msg.role === 'assistant' && 'toolCalls' in msg && msg.toolCalls) {
+    text += (msg.content ?? '');
+    for (const tc of msg.toolCalls) {
+      text += `<｜tool▁call▁begin｜>${tc.type}<｜tool▁sep｜>${tc.function.name}\n\`\`\`json\n${tc.function.arguments}\n\`\`\`<｜tool▁call▁end｜>`;
+    }
+    text += '<｜tool▁calls▁end｜><｜end▁of▁sentence｜>';
+  } else if (msg.role === 'tool') {
+    text += `<｜tool▁output▁begin｜>${msg.content}<｜tool▁output▁end｜>`;
+  } else {
+    text += msg.content ?? '';
+  }
+
+  return text;
+}
+
+/**
+ * 使用 DeepSeek V3 tokenizer 精确计算单条消息的 token 数。
+ * 需先调用 initTokenizer()。未初始化时回退到字符比率估算。
+ */
+export function countMessageTokensExact(msg: Message): number {
+  const counter = getExactCounter();
+  if (!counter) return estimateMessageTokens(msg);
+  return counter(serializeMessageForCounting(msg));
+}
+
+/**
+ * 使用 DeepSeek V3 tokenizer 精确计算消息列表的 token 数。
+ * 未初始化时回退到字符比率估算。
+ */
+export function countMessagesTokensExact(messages: Message[]): number {
+  const counter = getExactCounter();
+  if (!counter) return estimateMessagesTokens(messages);
+  let total = 0;
+  for (const msg of messages) {
+    total += counter(serializeMessageForCounting(msg));
+  }
+  return total;
+}
+
+/**
+ * 获取最佳 token 计数（优先精确，不可用时回退估算）。
+ * 用于精确查询场景；trimmer 热路径仍用 estimateTotal 保证性能。
+ */
+export function countTokensBest(messages: Message[], tools?: ToolDefinition[]): number {
+  if (isExactAvailable()) {
+    let total = countMessagesTokensExact(messages);
+    if (tools && tools.length > 0) {
+      const counter = getExactCounter();
+      total += counter ? counter(JSON.stringify(tools)) : estimateToolDefinitions(tools);
+    }
+    return total;
+  }
+  return tools ? estimateTotal(messages, tools).total : estimateMessagesTokens(messages);
+}
 // ===== 消息列表估算 =====
 
 export function estimateMessagesTokens(messages: Message[]): number {

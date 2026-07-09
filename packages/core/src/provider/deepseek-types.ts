@@ -52,6 +52,7 @@ export interface DeepSeekResponse {
   object: 'chat.completion';
   created: number;
   model: string;
+  system_fingerprint?: string;
   choices: Array<{
     index: number;
     message: {
@@ -60,7 +61,7 @@ export interface DeepSeekResponse {
       reasoning_content?: string;
       tool_calls?: DeepSeekToolCall[];
     };
-    finish_reason: string;
+    finish_reason: FinishReason;
   }>;
   usage?: {
     prompt_tokens: number;
@@ -94,7 +95,7 @@ export interface DeepSeekStreamChunk {
         };
       }>;
     };
-    finish_reason?: string | null;
+    finish_reason?: FinishReason | null;
   }>;
   usage?: {
     prompt_tokens: number;

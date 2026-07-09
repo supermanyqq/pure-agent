@@ -4,10 +4,10 @@ import type { ToolCall } from '../types/index.js';
  * 检测 LLM 是否陷入死循环。
  *
  * 比较每个 Step 的 toolCalls 与上一个 Step。
- * 连续 THRESHOLD(3) 次相同 → 判定为死循环。
+ * 连续 DEFAULT_LOOP_THRESHOLD(3) 次相同 → 判定为死循环。
  */
 export class LoopDetector {
-  private readonly THRESHOLD = 3;
+  private readonly DEFAULT_LOOP_THRESHOLD = 3;
 
   private previousToolCalls: ToolCall[] | null = null;
   private repeatCount = 0;
@@ -31,7 +31,7 @@ export class LoopDetector {
    * 是否已检测到死循环。
    */
   isLooping(): boolean {
-    return this.repeatCount >= this.THRESHOLD;
+    return this.repeatCount >= this.DEFAULT_LOOP_THRESHOLD;
   }
 
   /**

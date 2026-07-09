@@ -42,6 +42,9 @@ export interface TokenEstimate {
 export interface ToolPruneResult {
   messages: Message[];
   prunedCount: number;
+  tokensSaved: number;
+  duplicatesRemoved: number;
+  summarizedCount: number;
 }
 
 // ===== ContextConfig =====

@@ -35,8 +35,8 @@ export async function executeAll(
         };
       }
 
-      // 2. 校验工具名（只允许安全的标识符格式）
-      if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(tc.function.name)) {
+      // 2. 校验工具名（防御性检查；MCP 工具名允许 . 命名空间分隔符）
+      if (!/^[a-zA-Z_][a-zA-Z0-9_.-]*$/.test(tc.function.name)) {
         return {
           toolCallId: tc.id,
           content: '',
@@ -45,10 +45,12 @@ export async function executeAll(
       }
 
       // 3. 执行工具
+      // TODO: ToolRegistry.execute() 签名后续扩展为 execute(name, args, signal?)
+      //       以支持长时间运行工具的中途取消（如 shell_exec 30s）
       try {
         const content = await registry.execute(tc.function.name, args);
         return { toolCallId: tc.id, content };
-      } catch (execError) {
+      } catch (execError: unknown) {
         const message =
           execError instanceof Error ? execError.message : String(execError);
         return {

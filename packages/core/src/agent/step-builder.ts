@@ -1,6 +1,5 @@
 import type { Message, ToolDefinition, ChatRequest, AgentOptions } from '../types/index.js';
-import type { ContextManager, ContextWindowError } from '../types/index.js';
-// ContextWindowError 是类型导入（仅用于 catch 判断），class 实例由 context 模块创建
+import type { ContextManager } from '../types/index.js';
 export { ContextWindowError } from '../types/index.js';
 
 /**

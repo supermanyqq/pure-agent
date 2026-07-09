@@ -24,6 +24,9 @@ export {
   estimateToolDefinitions,
   estimateTotal,
   estimateMsgBudgetTokens,
+  countMessageTokensExact,
+  countMessagesTokensExact,
+  countTokensBest,
 } from './token-counter.js';
 
 // 历史管理
@@ -42,7 +45,7 @@ export {
 } from './history-manager.js';
 
 // 工具预裁剪
-export { pruneOldToolResults } from './tool-pruner.js';
+export { pruneOldToolResults, pruneOldToolResults as pruneToolResults } from './tool-pruner.js';
 
 // 摘要
 export {

@@ -47,6 +47,8 @@ function createMockRegistry(
       if (executeImpl) return executeImpl(name, args);
       return JSON.stringify({ tool: name, args });
     },
+    register: () => {},
+    unregister: () => {},
   };
 }
 

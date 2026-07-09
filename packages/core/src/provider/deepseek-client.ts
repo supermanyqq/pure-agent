@@ -176,12 +176,15 @@ async function* streamMessage(
       },
       body: JSON.stringify(body),
       signal: params.signal,
+      timeout: params.timeout,
+      maxRetries: params.maxRetries,
     });
 
     const chunks = parseSSEStream(res.body);
     yield* aggregateStream(chunks);
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof HttpAbortError) return;
+    if (error instanceof DOMException && error.name === 'AbortError') return;
     throw error;
   }
 }
@@ -259,6 +262,8 @@ export function createDeepSeekClient(config: ProviderConfig): DeepSeekClient {
         model: params.model ?? config.defaultModel,
         maxTokens: params.maxTokens ?? config.maxTokens,
         temperature: params.temperature ?? config.temperature,
+        timeout: params.timeout ?? config.timeout,
+        maxRetries: params.maxRetries ?? config.maxRetries,
       }),
   };
 }

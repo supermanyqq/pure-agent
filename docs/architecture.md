@@ -214,20 +214,23 @@ interface ToolDefinition {
 
 // ─── Agent 状态 ───
 
-type AgentState = 'idle' | 'thinking' | 'executing' | 'done' | 'error' | 'stopped'
+type AgentStatus = 'idle' | 'thinking' | 'executing' | 'stopped' | 'error'
 
 // ─── 事件类型 ───
 
-type AgentEventName =
-  | 'agent:start'         // Agent 开始运行
-  | 'agent:thinking'      // 开始调用 LLM
-  | 'agent:executing'     // 开始执行工具
-  | 'agent:step'          // 一轮 think+act 完成
-  | 'agent:done'          // 正常结束
-  | 'agent:error'         // 异常结束
-  | 'agent:stopped'       // 达到最大步数
-  | 'tool:execute:start'  // 单个工具开始执行
-  | 'tool:execute:end'    // 单个工具执行完成
+// Agent Loop 通过事件系统向外广播状态变化（详见 agent-loop/design.md）
+// 主要事件：
+//   agent:turn:start     — 新一轮对话开始
+//   agent:step:start     — 新一轮 LLM 调用开始
+//   agent:thinking       — 正在等待 LLM 响应
+//   agent:stream:delta   — 流式文本增量（逐 token）
+//   agent:tool_calls     — LLM 要求调用工具
+//   agent:executing      — 开始执行工具
+//   agent:tool_result    — 单个工具执行完成
+//   agent:response       — LLM 最终文本回复
+//   agent:turn:end       — 本轮对话结束
+//   agent:error          — 不可恢复错误（含死循环检测）
+//   agent:abort          — 用户中止
 ```
 
 ---

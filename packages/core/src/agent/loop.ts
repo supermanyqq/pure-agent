@@ -1,4 +1,4 @@
-import type { Message, ToolCall, AgentOptions, TurnOutput, StreamEvent, ChatRequest } from '../types/index.js';
+import type { Message, ToolCall, AgentOptions, TurnOutput, ChatRequest } from '../types/index.js';
 import type { ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter } from '../types/index.js';
 import { StepBuilder } from './step-builder.js';
 import { ToolCallAccumulator } from './tool-call-accumulator.js';
@@ -69,7 +69,7 @@ export class AgentLoop {
           options,
           signal,
         );
-      } catch (err) {
+      } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') {
           return this.abort(messages, steps);
         }
@@ -142,7 +142,7 @@ export class AgentLoop {
           messages,
         );
         if (execResult === 'aborted') {
-          return { messages, steps, status: 'aborted' };
+          return this.abort(messages, steps);
         }
         if (execResult === 'error') {
           return this.errorEnd(
@@ -185,7 +185,7 @@ export class AgentLoop {
         this.emit('agent:executing', { toolCalls });
         const execResult = await this.executeTools(toolCalls, signal, messages);
         if (execResult === 'aborted') {
-          return { messages, steps, status: 'aborted' };
+          return this.abort(messages, steps);
         }
         if (execResult === 'error') {
           return this.errorEnd(
@@ -271,7 +271,7 @@ export class AgentLoop {
         toolCalls: accumulator.getToolCalls(),
         finishReason,
       };
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return { type: 'abort' };
       }
@@ -297,7 +297,7 @@ export class AgentLoop {
     let results;
     try {
       results = await executeAll(toolCalls, this.toolRegistry, signal);
-    } catch (err) {
+    } catch (err: unknown) {
       // 基础设施级异常（非单个工具的业务错误）→ 终止 Turn
       this.emit('agent:error', {
         error: {
@@ -323,7 +323,7 @@ export class AgentLoop {
           : result.content,
       });
 
-      this.emit('agent:tool_result', result);
+      this.emit('agent:tool_result', result as unknown as Record<string, unknown>);
     }
 
     return 'success';
@@ -338,6 +338,7 @@ export class AgentLoop {
 
   private abort(messages: Message[], steps: number): TurnOutput {
     this.emit('agent:abort');
+    this.emit('agent:turn:end', { messages, steps });
     return { messages, steps, status: 'aborted' };
   }
 
@@ -346,14 +347,12 @@ export class AgentLoop {
     steps: number,
     error: Error,
   ): TurnOutput {
-    this.emit('agent:error', {
-      error: { name: error.name, message: error.message },
-    });
+    this.emit('agent:error', { error });
+    this.emit('agent:turn:end', { messages, steps });
     return { messages, steps, status: 'error', error };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private emit(type: string, payload?: any): void {
+  private emit(type: string, payload?: Record<string, unknown>): void {
     this.events.emit(type, payload ?? {});
   }
 }

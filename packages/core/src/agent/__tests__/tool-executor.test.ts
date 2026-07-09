@@ -17,9 +17,11 @@ function createMockRegistry(
     getDefinitions: () => [],
     execute: async (name: string, args: Record<string, unknown>) => {
       const handler = handlers[name];
-      if (!handler) throw new Error(`Tool not found: ${name}`);
+      if (!handler) return `Error: Tool "${name}" not found.`;
       return handler(args);
     },
+    register: () => {},
+    unregister: () => {},
   };
 }
 
@@ -207,6 +209,6 @@ describe('executeAll', () => {
       registry,
       new AbortController().signal,
     );
-    expect(results[0].error).toBe('Tool not found: unknown_tool');
+    expect(results[0].content).toContain('Tool "unknown_tool" not found');
   });
 });

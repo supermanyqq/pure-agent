@@ -10,8 +10,8 @@
 
 | 依赖 | 说明 |
 |---|---|
-| `types/` | `Message`, `ToolCall`, `ToolDefinition`, `ToolResult`, `ChatRequest`, `ChatStreamEvent`, `ToolCallDelta`, `TurnOutput`, `AgentOptions` |
-| `provider/` | `ChatProvider` 接口，提供 `chatStream(request, signal): AsyncIterable<ChatStreamEvent>` |
+| `types/` | `Message`, `ToolCall`, `ToolDefinition`, `ToolResult`, `ChatRequest`, `StreamEvent`, `TurnOutput`, `AgentOptions` |
+| `provider/` | `ChatProvider` 接口，提供 `streamMessage(params): AsyncGenerator<StreamEvent>` |
 | `tools/` | `ToolRegistry` 接口，提供 `execute(name, args)` 和 `getDefinitions()` |
 | `context/` | `ContextManager` 接口（注入到 StepBuilder） |
 | `agent/step-builder.ts` | Phase 1 产出，`StepBuilder` 类 |
@@ -19,14 +19,14 @@
 | `agent/loop-detector.ts` | Phase 3 产出，`LoopDetector` 类 |
 | `events/` | 事件发射器 |
 
-## ChatStreamEvent 格式说明
+## StreamEvent 格式说明
 
-`ChatStreamEvent` 是 **Provider 层标准化后的格式**，不是原始 SSE 格式。Provider 负责：
+`StreamEvent` 是 **Provider 层标准化后的格式**，不是原始 SSE 格式。Provider 负责：
 
 1. 解析 SSE 数据块
-2. 将每个 chunk 的 `delta.content` 和 `delta.tool_calls` 提取为 `delta` 事件
-3. 当 chunk 的 `finish_reason` 变为非 null 时，发射一个独立的 `done` 事件
-4. 隐藏 `data: [DONE]` 终止标记
+2. 聚合 tool_calls 的增量 JSON 片段
+3. 过滤 reasoning_content
+4. 产出四种标准化事件：
 
 ```
 原始 SSE:
@@ -35,15 +35,26 @@
   chunk 3: delta.content="", finish_reason="stop"
   data: [DONE]
 
-Provider 标准化后:
-  event: { type: 'delta', delta: { content: 'Hello' } }
-  event: { type: 'delta', delta: { content: ' world' } }
-  event: { type: 'done', finish_reason: 'stop' }
+Provider 标准化后 (StreamEvent):
+  event: { type: 'text', content: 'Hello' }
+  event: { type: 'text', content: ' world' }
+  event: { type: 'done', finishReason: 'stop' }
+```
+
+Tool calls 场景下：
+```
+  event: { type: 'text', content: '好的，让我读一下那个文件' }
+  event: { type: 'tool_call_start', id: 'call_abc', name: 'read_file' }
+  event: { type: 'tool_call_delta', id: 'call_abc', arguments: '{"path":"' }
+  event: { type: 'tool_call_delta', id: 'call_abc', arguments: 'package.json"' }
+  event: { type: 'tool_call_delta', id: 'call_abc', arguments: '}' }
+  event: { type: 'done', finishReason: 'tool_calls' }
 ```
 
 这样做的好处：
-- Agent Loop 不关心 SSE 解析细节，专注于决策逻辑
-- `done` 事件是明确的"流结束"信号，比检查 `finish_reason !== null` 更清晰
+- Agent Loop 不关心 SSE 解析细节和 JSON 片段拼接，专注于决策逻辑
+- `done` 事件是明确的"流结束"信号
+- `tool_call_start` 和 `tool_call_delta` 分别对应 tool call 的发现和参数累积
 - 后续扩展其他 Provider 时只需修改 Provider 层，Loop 不受影响
 
 ## 状态机
@@ -333,9 +344,6 @@ export class AgentLoop {
 
   /**
    * 流式调用 LLM，文本 delta 转发 UI，tool_calls delta 在内存中累积。
-   *
-   * 注意：此方法在检查到 signal.aborted 时主动返回 { type: 'abort' }，
-   * 但不发射 agent:abort 事件。事件发射统一由 run() 中的调用方（this.abort()）处理。
    */
   private async processStream(
     request: ChatRequest,
@@ -346,35 +354,38 @@ export class AgentLoop {
     const accumulator = new ToolCallAccumulator();
 
     try {
-      const stream = this.provider.chatStream(request, signal);
+      const stream = this.provider.streamMessage({
+        model: request.model,
+        messages: request.messages,
+        tools: request.tools,
+        maxTokens: request.maxTokens,
+        temperature: request.temperature,
+        signal,
+      });
 
       for await (const event of stream) {
-        // ===== 检查点 2：流式迭代中 =====
         if (signal.aborted) {
           return { type: 'abort' };
         }
 
-        if (event.type === 'delta') {
-          // 文本 delta → 实时转发 UI
-          if (event.delta.content) {
-            textContent += event.delta.content;
-            this.emit('agent:stream:delta', {
-              content: event.delta.content,
-            });
-          }
+        if (event.type === 'text') {
+          textContent += event.content;
+          this.emit('agent:stream:delta', { content: event.content });
+        }
 
-          // tool_calls delta → 内存中累积（不暴露未完成的 JSON 给 UI）
-          if (event.delta.tool_calls) {
-            accumulator.merge(event.delta.tool_calls);
-          }
+        if (event.type === 'tool_call_start') {
+          accumulator.startToolCall(event.id, event.name);
+        }
+
+        if (event.type === 'tool_call_delta') {
+          accumulator.appendArguments(event.id, event.arguments);
         }
 
         if (event.type === 'done') {
-          finishReason = event.finish_reason;
+          finishReason = event.finishReason;
         }
       }
 
-      // 流正常结束
       return {
         type: 'success',
         textContent,
@@ -382,14 +393,10 @@ export class AgentLoop {
         finishReason,
       };
     } catch (err) {
-      // Provider 抛出的 AbortError → 用户主动中止
       if (err instanceof DOMException && err.name === 'AbortError') {
         return { type: 'abort' };
       }
-
-      // 真正的网络/解析错误
-      this.emit('agent:error', { error: err });
-      return { type: 'error', error: err as Error };
+      return { type: 'error', error: err instanceof Error ? err : new Error(String(err)) };
     }
   }
 
@@ -496,68 +503,56 @@ export class AgentLoop {
 
 ## ToolCallAccumulator 实现
 
-OpenAI 兼容流式格式中，tool_calls 按 `index` 字段分组，需要跨多个 delta 累积拼接。
+Provider 的 `StreamEvent` 已经完成了 tool_calls 的 JSON 片段聚合。`ToolCallAccumulator` 通过 ID 追踪 tool call 的发现和参数累积。
 
-### 流式 tool_calls 增量协议
+### 流式 tool_calls 事件序列
 
 ```
-delta 1: tool_calls: [{index: 0, id: "call_abc", function: {name: "read_file", arguments: '{"path":"'}}]
-delta 2: tool_calls: [{index: 0, function: {arguments: 'package.json"'}}]
-delta 3: tool_calls: [{index: 0, function: {arguments: '}'}}]
+event: { type: 'tool_call_start', id: "call_abc", name: "read_file" }
+event: { type: 'tool_call_delta', id: "call_abc", arguments: '{"path":"' }
+event: { type: 'tool_call_delta', id: "call_abc", arguments: 'package.json"' }
+event: { type: 'tool_call_delta', id: "call_abc", arguments: '}' }
                                                             ↑
-Provider 标准化后的 done 事件: { finish_reason: "tool_calls" }  ← 此时才完整
+event: { type: 'done', finishReason: 'tool_calls' }  ← 此时 tool_calls 完整
 ```
 
 关键规则：
-- 同一个 `index` 的多个 delta 属于同一个 ToolCall
-- `id` 和 `function.name` 只在第一个 delta 中给出
-- `function.arguments` 跨 delta 累积拼接
-- 多个 tool_calls 时，每个有自己的 index（0, 1, 2, ...）
+- `tool_call_start` 提供 id 和 name（只出现一次）
+- `tool_call_delta` 提供 arguments 片段（可能多次，跨事件累积）
+- 多个 tool_calls 时，每个有自己的 id
 
 ### 实现
 
 ```typescript
 // packages/core/src/agent/tool-call-accumulator.ts
 
-import type { ToolCall, ToolCallDelta } from '../types/index.js';
+import type { ToolCall } from '../types/index.js';
 
 export class ToolCallAccumulator {
-  private toolCalls: Map<number, ToolCall> = new Map();
+  private toolCalls: Map<string, ToolCall> = new Map();
+  private insertionOrder: string[] = [];
 
-  /**
-   * 合并增量 delta 到累积的 ToolCall 中。
-   * 同一 index 的 delta 参数会被拼接。
-   */
-  merge(deltas: ToolCallDelta[]): void {
-    for (const delta of deltas) {
-      const existing = this.toolCalls.get(delta.index);
-
-      if (existing) {
-        // 已有该 index → 追加 arguments 片段
-        if (delta.function?.arguments) {
-          existing.function.arguments += delta.function.arguments;
-        }
-      } else {
-        // 首次出现 → 创建新 ToolCall
-        this.toolCalls.set(delta.index, {
-          id: delta.id || '',
-          type: 'function',
-          function: {
-            name: delta.function?.name || '',
-            arguments: delta.function?.arguments || '',
-          },
-        });
-      }
+  startToolCall(id: string, name: string): void {
+    if (!this.toolCalls.has(id)) {
+      const tc: ToolCall = {
+        id,
+        type: 'function',
+        function: { name, arguments: '' },
+      };
+      this.toolCalls.set(id, tc);
+      this.insertionOrder.push(id);
     }
   }
 
-  /**
-   * 返回按 index 排序的完整 ToolCall 数组。
-   */
+  appendArguments(id: string, argumentsFragment: string): void {
+    const tc = this.toolCalls.get(id);
+    if (tc) {
+      tc.function.arguments += argumentsFragment;
+    }
+  }
+
   getToolCalls(): ToolCall[] {
-    return Array.from(this.toolCalls.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([, tc]) => tc);
+    return this.insertionOrder.map(id => this.toolCalls.get(id)!);
   }
 }
 ```
@@ -566,12 +561,11 @@ export class ToolCallAccumulator {
 
 | 场景 | 行为 |
 |---|---|
-| 同一 index 的 function.name 在后续 delta 再次出现 | 仅首次设置，后续忽略 |
-| delta 没有 index 字段 | 不应发生（协议保证），若发生则 `undefined` 被 Map 视为独立 key |
-| 多个 tool_calls 交叉到达 | Map 按 index 分组，不依赖到达顺序 |
+| 同一 id 的 startToolCall 多次调用 | 仅首次生效 |
+| appendArguments 在 startToolCall 之前调用 | 忽略（id 未注册） |
+| 多个 tool_calls 交叉到达 | Map 按 id 分组，不依赖到达顺序 |
 | arguments 跨 5 个以上 delta 拼接 | 每次用 `+=` 拼接 |
-| delta 的 id 为空字符串 | 初始化为 `''`，后续 delta 不会覆盖已有的非空 id |
-| 流结束但从未收到 tool_calls delta | `getToolCalls()` 返回 `[]` |
+| 流结束但从未收到 tool_call_start | `getToolCalls()` 返回 `[]` |
 
 ---
 
@@ -623,7 +617,7 @@ abort 信号在 4 个位置被检查，确保用户随时可以中断：
             StepBuilder.build()
                     │
                     ▼
-            provider.chatStream()
+            provider.streamMessage()
                     │
             ┌───────┴────────┐
             │ 检查点 2       │ ← for await 每次迭代
@@ -652,7 +646,7 @@ abort 信号在 4 个位置被检查，确保用户随时可以中断：
             continue 下一 Step
 ```
 
-**AbortError 处理**：Provider 的 `chatStream` 可能因 signal abort 而抛出 `DOMException(name='AbortError')`。`processStream` 的 catch 块识别此异常并返回 `{ type: 'abort' }`，而非 `{ type: 'error' }`。
+**AbortError 处理**：Provider 的 `streamMessage` 可能因 signal abort 而抛出 `DOMException(name='AbortError')`。`processStream` 的 catch 块识别此异常并返回 `{ type: 'abort' }`，而非 `{ type: 'error' }`。
 
 ---
 

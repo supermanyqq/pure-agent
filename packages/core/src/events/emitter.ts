@@ -23,9 +23,14 @@ export function createConsoleEmitter(): AgentEventEmitter {
             process.stdout.write((payload.content as string) + '\n');
           }
           break;
-        case 'agent:error':
-          console.error('\n[ERROR]', (payload as Record<string, unknown>)?.error ?? payload);
+        case 'agent:error': {
+          const err = (payload as Record<string, unknown>)?.error ?? payload;
+          // 脱敏后再输出：防止 Error 对象或 payload 中意外包含 API key
+          const raw = err instanceof Error ? err.message : JSON.stringify(err);
+          const safe = raw.replace(/sk-[a-zA-Z0-9_-]{20,}/g, '[REDACTED]');
+          console.error('\n[ERROR]', safe);
           break;
+        }
         case 'agent:abort':
           console.warn('\n[ABORTED]');
           break;

@@ -91,12 +91,22 @@ export interface ChatProvider {
     maxTokens?: number;
     temperature?: number;
     signal?: AbortSignal;
+    timeout?: number;
+    maxRetries?: number;
   }): AsyncGenerator<StreamEvent>;
 }
 
 export interface ToolRegistry {
   execute(name: string, args: Record<string, unknown>): Promise<string>;
   getDefinitions(): ToolDefinition[];
+  register(tool: Tool): void;
+  unregister(name: string): void;
+}
+
+/** 完整的工具定义（definition + execute），用于注册 */
+export interface Tool {
+  definition: ToolDefinition;
+  execute(args: Record<string, unknown>): Promise<string>;
 }
 
 export interface ContextManager {
@@ -163,7 +173,24 @@ export interface CompressionStats {
 
 /** 摘要器接口（由应用层注入 Provider 实现） */
 export interface Summarizer {
-  summarize(messages: Message[], signal?: AbortSignal): Promise<string>;
+  summarize(messages: Message[], options: SummarizeOptions): Promise<SummaryResult>;
+}
+
+/** 摘要结果 */
+export interface SummaryResult {
+  summary: string;
+  tokensUsed: number;
+  method: 'llm' | 'fallback';
+}
+
+/** 摘要选项 */
+export interface SummarizeOptions {
+  previousSummary?: string;
+  summaryBudget?: number;
+  signal?: AbortSignal;
+  focusTopic?: string;
+  model?: string;
+  maxSummaryTokens?: number;
 }
 
 /** 上下文窗口超限错误 */

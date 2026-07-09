@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createContextManager } from '../trimmer.js';
 import { ContextWindowError } from '../../types/index.js';
-import type { Message, ToolCall, Summarizer, TrimResult } from '../../types/index.js';
+import type { Message, ToolCall, Summarizer, TrimResult, SummaryResult } from '../../types/index.js';
 
 function user(content: string): Message {
   return { role: 'user', content };
@@ -14,7 +14,13 @@ function toolMsg(callId: string, content: string): Message {
 }
 
 function mockSummarizer(response = 'Mock summary.'): Summarizer {
-  return { summarize: vi.fn(async () => response) };
+  return {
+    summarize: vi.fn(async (): Promise<SummaryResult> => ({
+      summary: response,
+      tokensUsed: 10,
+      method: 'llm' as const,
+    })),
+  };
 }
 
 describe('Trimmer', () => {

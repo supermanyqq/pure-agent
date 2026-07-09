@@ -15,10 +15,12 @@
  * 只做正则替换，不引入额外依赖。
  */
 const SENSITIVE_PATTERNS: Array<[RegExp, string | ((match: string, ...groups: string[]) => string)]> = [
-  // OpenAI API keys: sk-...
+  // OpenAI / DeepSeek API keys: sk-...
   [/\b(sk-[A-Za-z0-9]{32,})\b/g, '[REDACTED_API_KEY]'],
   // Anthropic API keys: sk-ant-...
   [/\b(sk-ant-[A-Za-z0-9_-]{32,})\b/g, '[REDACTED_API_KEY]'],
+  // DeepSeek API keys (same sk- prefix, length may vary; catch with broader pattern)
+  [/\b(sk-[a-zA-Z0-9]{20,})\b/g, '[REDACTED_API_KEY]'],
   // GitHub personal access tokens (classic + fine-grained)
   [/\b(ghp_[A-Za-z0-9]{36,})\b/g, '[REDACTED_TOKEN]'],
   [/\b(gho_[A-Za-z0-9]{36,})\b/g, '[REDACTED_TOKEN]'],

@@ -29,6 +29,9 @@ import {
   SUMMARY_FAILURE_COOLDOWN_MS,
   MIN_EFFECTIVE_WINDOW_TOKENS,
   TOOL_CONTENT_TRUNCATE_HEAD_CHARS,
+  TAIL_SOFT_CEILING_MULTIPLIER,
+  TAIL_MIN_MESSAGE_FLOOR,
+  MAX_TAIL_MESSAGE_FLOOR,
 } from './types.js';
 import { estimateTotal, estimateMessagesTokens, estimateMsgBudgetTokens } from './token-counter.js';
 import {
@@ -57,6 +60,8 @@ import {
   createSummarizer,
 } from './summarizer.js';
 import type { ChatProvider } from '../types/index.js';
+
+const SUMMARY_EMPTY_CONTENT_COOLDOWN_MS = 60_000;
 
 // ===== 工厂函数 =====
 
@@ -263,12 +268,12 @@ class Trimmer implements ContextManager {
 
             const summaryBody = await this.summarizer.summarize(
               [{ role: 'user', content: prompt }],
-              signal,
+              { signal, previousSummary: this.previousSummary, summaryBudget: budget },
             );
 
-            if (summaryBody && summaryBody.trim()) {
-              summary = formatSummary(summaryBody);
-              this.previousSummary = stripSummaryPrefix(summaryBody);
+            if (summaryBody.summary && summaryBody.summary.trim()) {
+              summary = formatSummary(summaryBody.summary);
+              this.previousSummary = stripSummaryPrefix(summaryBody.summary);
               summarized = true;
               this.summaryFailureCooldownUntil = 0;
               this.lastSummaryError = undefined;
@@ -277,7 +282,7 @@ class Trimmer implements ContextManager {
               summary = buildFallbackSummary(turnsToSummarize, 'LLM returned empty summary');
               summarized = true;
               trimStatus = 'fallback_summary';
-              this.summaryFailureCooldownUntil = Date.now() + 60_000;
+              this.summaryFailureCooldownUntil = Date.now() + SUMMARY_EMPTY_CONTENT_COOLDOWN_MS;
               this.lastSummaryError = 'LLM returned empty summary';
             }
           }
@@ -416,14 +421,14 @@ class Trimmer implements ContextManager {
     const n = messages.length;
 
     const availableTail = Math.max(0, n - headEnd - 1);
-    const minTailFloor = Math.max(3, Math.min(DEFAULT_PROTECT_LAST_N, 8));
+    const minTailFloor = Math.max(TAIL_MIN_MESSAGE_FLOOR, Math.min(DEFAULT_PROTECT_LAST_N, MAX_TAIL_MESSAGE_FLOOR));
     const compressibleTailCap = Math.max(3, availableTail - 2);
     const minTail =
       availableTail > 1
         ? Math.min(minTailFloor, compressibleTailCap, availableTail)
         : 0;
 
-    const softCeiling = Math.ceil(tokenBudget * 1.5);
+    const softCeiling = Math.ceil(tokenBudget * TAIL_SOFT_CEILING_MULTIPLIER);
     let accumulated = 0;
     let cutIdx = n;
 

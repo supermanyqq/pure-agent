@@ -18,6 +18,9 @@ export {
   estimateToolDefinitions,
   estimateTotal,
   estimateMsgBudgetTokens,
+  countMessageTokensExact,
+  countMessagesTokensExact,
+  countTokensBest,
   groupByTurns,
   getRecentTurns,
   getTurnCount,
@@ -56,3 +59,15 @@ export { createConsoleEmitter } from './events/emitter.js';
 
 // System Prompt
 export { DEFAULT_SYSTEM_PROMPT, formatSystemPrompt } from './system-prompt.js';
+
+// Tokenizer (DeepSeek V3 BPE — exact token counting)
+export {
+  initTokenizer,
+  encode,
+  countTokens as countTokensExact,
+  decode,
+  isInitialized as isTokenizerInitialized,
+  loadTokenizerData,
+} from './tokenizer/deepseek-tokenizer.js';
+export { loadTokenizerFromFile } from './tokenizer/index.js';
+export type { TokenizerData, BPEConfig } from './tokenizer/types.js';

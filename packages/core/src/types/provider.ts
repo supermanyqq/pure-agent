@@ -15,6 +15,8 @@ export interface SendMessageParams {
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
+  timeout?: number;
+  maxRetries?: number;
   thinking?: {
     type: 'enabled' | 'disabled';
     reasoning_effort?: 'high' | 'max';

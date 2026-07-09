@@ -186,11 +186,13 @@ export function pruneOldToolResults(
   options: PruneOptions,
 ): ToolPruneResult {
   if (messages.length === 0) {
-    return { messages: [], prunedCount: 0 };
+    return { messages: [], prunedCount: 0, tokensSaved: 0, duplicatesRemoved: 0, summarizedCount: 0 };
   }
 
   const result = messages.map((m) => ({ ...m }));
   let pruned = 0;
+  let duplicatesRemoved = 0;
+  let summarizedCount = 0;
 
   // 构建 tool_call_id → (name, arguments) 索引
   const callIdToTool = new Map<string, { name: string; args: string }>();
@@ -250,6 +252,7 @@ export function pruneOldToolResults(
           '[Duplicate tool output — same content as a more recent call]',
       };
       pruned++;
+      duplicatesRemoved++;
     } else {
       seenContents.add(content);
     }
@@ -271,6 +274,7 @@ export function pruneOldToolResults(
 
     result[i] = { ...msg, content: summary };
     pruned++;
+    summarizedCount++;
   }
 
   // 阶段 3：截断 assistant 消息中的 tool_call arguments
@@ -301,5 +305,11 @@ export function pruneOldToolResults(
     }
   }
 
-  return { messages: result, prunedCount: pruned };
+  return {
+    messages: result,
+    prunedCount: pruned,
+    tokensSaved: 0, // 精确 token 节省需调用 TokenCounter，此处给调用方提供近似值
+    duplicatesRemoved,
+    summarizedCount,
+  };
 }
