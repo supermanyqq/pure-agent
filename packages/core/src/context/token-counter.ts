@@ -126,6 +126,15 @@ export function estimateMessageTokens(
     tokens += estimateTextTokens(message.content, profile);
   }
 
+  // reasoningContent 会作为 reasoning_content 发送给 Provider，必须计入 token
+  if (
+    message.role === 'assistant' &&
+    'reasoningContent' in message &&
+    message.reasoningContent
+  ) {
+    tokens += estimateTextTokens(message.reasoningContent, profile);
+  }
+
   if (message.role === 'assistant' && 'toolCalls' in message && message.toolCalls) {
     for (const tc of message.toolCalls) {
       tokens += estimateTextTokens(tc.id, profile);
@@ -140,28 +149,31 @@ export function estimateMessageTokens(
 
 // ─── DeepSeek V3 精确计数（可选，需先 initTokenizer） ───
 
-// 通过 setExactCounter 注入 tokenizer 函数，避免 context → tokenizer 的硬依赖
-let exactCounter: ((text: string) => number) | null = null;
-let exactAvailable = false;
+// 通过 setBpeCounter 注入 tokenizer 函数，避免 context → tokenizer 的硬依赖
+let bpeCounter: ((text: string) => number) | null = null;
+let bpeAvailable = false;
 
 /**
- * 注册精确 token 计数器。
+ * 注册 BPE token 计数器。
  * 由 tokenizer 模块在 initTokenizer() 后调用，或由应用层手动注入。
  */
-export function setExactCounter(counter: (text: string) => number): void {
-  exactCounter = counter;
-  exactAvailable = true;
+export function setBpeCounter(counter: (text: string) => number): void {
+  bpeCounter = counter;
+  bpeAvailable = true;
 }
 
-/** 检查精确 tokenizer 是否已注入 */
-function isExactAvailable(): boolean {
-  return exactAvailable;
+/** 检查 BPE tokenizer 是否已注入 */
+function isBpeAvailable(): boolean {
+  return bpeAvailable;
 }
 
-/** 获取已注入的精确计数函数 */
-function getExactCounter(): ((text: string) => number) | null {
-  return exactCounter;
+/** 获取已注入的 BPE 计数函数 */
+function getBpeCounter(): ((text: string) => number) | null {
+  return bpeCounter;
 }
+
+// 向后兼容别名
+export { setBpeCounter as setExactCounter };
 
 /**
  * 序列化消息为 DeepSeek chat template 格式的文本（近似）。
@@ -187,21 +199,21 @@ function serializeMessageForCounting(msg: Message): string {
 }
 
 /**
- * 使用 DeepSeek V3 tokenizer 精确计算单条消息的 token 数。
+ * 使用实验性 BPE tokenizer 计算单条消息的 token 数。
  * 需先调用 initTokenizer()。未初始化时回退到字符比率估算。
  */
-export function countMessageTokensExact(msg: Message): number {
-  const counter = getExactCounter();
+export function countMessageTokensBpe(msg: Message): number {
+  const counter = getBpeCounter();
   if (!counter) return estimateMessageTokens(msg);
   return counter(serializeMessageForCounting(msg));
 }
 
 /**
- * 使用 DeepSeek V3 tokenizer 精确计算消息列表的 token 数。
+ * 使用实验性 BPE tokenizer 计算消息列表的 token 数。
  * 未初始化时回退到字符比率估算。
  */
-export function countMessagesTokensExact(messages: Message[]): number {
-  const counter = getExactCounter();
+export function countMessagesTokensBpe(messages: Message[]): number {
+  const counter = getBpeCounter();
   if (!counter) return estimateMessagesTokens(messages);
   let total = 0;
   for (const msg of messages) {
@@ -211,20 +223,25 @@ export function countMessagesTokensExact(messages: Message[]): number {
 }
 
 /**
- * 获取最佳 token 计数（优先精确，不可用时回退估算）。
- * 用于精确查询场景；trimmer 热路径仍用 estimateTotal 保证性能。
+ * 获取最佳 token 计数（优先 BPE，不可用时回退估算）。
+ * 用于诊断/校准场景；trimmer 热路径仍用 estimateTotal 保证性能。
  */
-export function countTokensBest(messages: Message[], tools?: ToolDefinition[]): number {
-  if (isExactAvailable()) {
-    let total = countMessagesTokensExact(messages);
+export function countTokensBestEffort(messages: Message[], tools?: ToolDefinition[]): number {
+  if (isBpeAvailable()) {
+    let total = countMessagesTokensBpe(messages);
     if (tools && tools.length > 0) {
-      const counter = getExactCounter();
+      const counter = getBpeCounter();
       total += counter ? counter(JSON.stringify(tools)) : estimateToolDefinitions(tools);
     }
     return total;
   }
   return tools ? estimateTotal(messages, tools).total : estimateMessagesTokens(messages);
 }
+
+// 向后兼容别名
+export { countMessageTokensBpe as countMessageTokensExact };
+export { countMessagesTokensBpe as countMessagesTokensExact };
+export { countTokensBestEffort as countTokensBest };
 // ===== 消息列表估算 =====
 
 export function estimateMessagesTokens(messages: Message[]): number {

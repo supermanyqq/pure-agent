@@ -24,9 +24,13 @@ export {
   estimateToolDefinitions,
   estimateTotal,
   estimateMsgBudgetTokens,
-  countMessageTokensExact,
-  countMessagesTokensExact,
-  countTokensBest,
+  countMessageTokensBpe,
+  countMessagesTokensBpe,
+  countTokensBestEffort,
+  // 向后兼容别名
+  countMessageTokensBpe as countMessageTokensExact,
+  countMessagesTokensBpe as countMessagesTokensExact,
+  countTokensBestEffort as countTokensBest,
 } from './token-counter.js';
 
 // 历史管理

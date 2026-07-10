@@ -404,7 +404,10 @@ export function buildFallbackSummary(
     }
   }
 
-  const reasonText = reason ? ` Summary failure reason: ${reason}.` : '';
+  // 强制脱敏点 #4：回退摘要中的 reason 文本必须脱敏
+  const reasonText = reason
+    ? ` Summary failure reason: ${redactSensitiveText(reason)}.`
+    : '';
   const activeTask =
     userAsks.length > 0
       ? `User asked: ${JSON.stringify(userAsks[userAsks.length - 1])}`
@@ -492,12 +495,13 @@ export function createSummarizer(provider: ChatProvider): Summarizer {
     async summarize(messages: Message[], options: SummarizeOptions = {}): Promise<SummaryResult> {
       const stream = provider.streamMessage({
         messages,
-        maxTokens: options.maxSummaryTokens ?? DEFAULT_COMPLETION_RESERVE,
+        maxTokens: options.summaryBudget ?? options.maxSummaryTokens ?? DEFAULT_COMPLETION_RESERVE,
         temperature: 0,
         signal: options.signal,
       });
 
       let text = '';
+      let usage: import('../types/index.js').TokenUsage | undefined;
       for await (const event of stream) {
         if (options.signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError');
@@ -505,14 +509,20 @@ export function createSummarizer(provider: ChatProvider): Summarizer {
         if (event.type === 'text') {
           text += event.content;
         }
+        if (event.type === 'done' && event.usage) {
+          usage = event.usage;
+        }
+        if (event.type === 'aborted') {
+          throw new DOMException('Aborted', 'AbortError');
+        }
       }
 
       // 强制脱敏点 #3：摘要返回内容二次脱敏
-      const summary = redactSensitiveText(text.trim());
+      const body = redactSensitiveText(text.trim());
       return {
-        summary,
-        tokensUsed: 0, // 实际 token 数由调用方通过 Provider usage 获取
+        body,
         method: 'llm',
+        usage,
       };
     },
   };

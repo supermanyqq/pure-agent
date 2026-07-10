@@ -16,8 +16,7 @@ function toolMsg(callId: string, content: string): Message {
 function mockSummarizer(response = 'Mock summary.'): Summarizer {
   return {
     summarize: vi.fn(async (): Promise<SummaryResult> => ({
-      summary: response,
-      tokensUsed: 10,
+      body: response,
       method: 'llm' as const,
     })),
   };

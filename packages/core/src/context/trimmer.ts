@@ -12,7 +12,7 @@
  */
 
 import type { Message, ToolDefinition, ToolCall } from '../types/index.js';
-import type { ContextManager, TrimResult, TrimOptions, CompressionStats, Summarizer } from '../types/index.js';
+import type { ContextManager, TrimResult, TrimOptions, CompressionStats, Summarizer, TrimSuccessStatus, TrimFailureStatus } from '../types/index.js';
 import { ContextWindowError } from '../types/index.js';
 import type { ContextConfig } from './types.js';
 import {
@@ -49,13 +49,8 @@ import {
   buildSummaryPrompt,
   computeSummaryBudget,
   formatSummary,
-  stripSummaryPrefix,
   isContextSummaryContent,
   buildFallbackSummary,
-  COMPRESSION_NOTE,
-  MERGED_PRIOR_CONTEXT_HEADER,
-  MERGED_SUMMARY_DELIMITER,
-  SUMMARY_END_MARKER,
   COMPRESSED_SUMMARY_METADATA_KEY,
   createSummarizer,
 } from './summarizer.js';
@@ -130,18 +125,7 @@ class Trimmer implements ContextManager {
       force = false,
     } = options;
 
-    // 重入检测：如果已有压缩进行中，返回原消息
-    if (this.compressionInProgress) {
-      return this.unchangedResult(messages);
-    }
-
-    // force 参数绕过 cooldown（手动 /compress）
-    if (force) {
-      this.summaryFailureCooldownUntil = 0;
-      this.ineffectiveCompressionCount = 0;
-    }
-
-    // 1. 计算有效窗口
+    // 1. 计算有效窗口（必须在早期计算，后续路径都需要）
     const rawEffective = messages.length > 0
       ? this.config.contextWindow - completionReserve -
         Math.min(
@@ -155,9 +139,24 @@ class Trimmer implements ContextManager {
       ? rawEffective
       : Math.max(MIN_EFFECTIVE_WINDOW_TOKENS, Math.ceil(this.config.contextWindow * 0.5));
 
+    // 重入检测：如果已有压缩进行中，返回原消息
+    if (this.compressionInProgress) {
+      return this.makeFailureResult(
+        messages, 0, 0, false,
+        estimateMessagesTokens(messages), effectiveWindow,
+        'compression_busy', 'Another compression is already in progress',
+      );
+    }
+
+    // force 参数绕过 cooldown（手动 /compress）
+    if (force) {
+      this.summaryFailureCooldownUntil = 0;
+      this.ineffectiveCompressionCount = 0;
+    }
+
     // 2. 空消息快速返回
     if (messages.length === 0) {
-      return this.makeResult(messages, 0, 0, false, 0, 'unchanged');
+      return this.makeResult(messages, 0, 0, false, 0, effectiveWindow, 'unchanged');
     }
 
     // 3. 估算当前 token
@@ -167,7 +166,7 @@ class Trimmer implements ContextManager {
     if (currentEstimate.total <= effectiveWindow) {
       return this.makeResult(
         messages, 0, 0, false,
-        currentEstimate.total, 'unchanged',
+        currentEstimate.total, effectiveWindow, 'unchanged',
       );
     }
 
@@ -190,18 +189,26 @@ class Trimmer implements ContextManager {
     if (messages.length <= minForCompress) {
       const truncated = this.truncateOversizedToolMessages(messages, effectiveWindow, tools);
       const newEstimate = estimateTotal(truncated, tools);
-      return this.makeResult(
-        truncated, 0, 0, false,
-        newEstimate.total,
+      return this.ensureFits(
+        {
+          messages: truncated,
+          removedTurns: 0,
+          removedMessageCount: 0,
+          summarized: false,
+          estimatedTokens: newEstimate.total,
+          tokensSaved: 0,
+        },
+        effectiveWindow,
         truncated.length < messages.length ? 'pruned_only' : 'unchanged',
       );
     }
 
     // 7. 反抖动检查
     if (this.ineffectiveCompressionCount >= MAX_INEFFECTIVE_COMPRESSIONS) {
-      return this.makeResult(
+      return this.makeFailureResult(
         messages, 0, 0, false,
-        currentEstimate.total, 'skipped_thrashing',
+        currentEstimate.total, effectiveWindow, 'skipped_thrashing',
+        'Compression skipped — last 2 compressions saved <10% each. Consider /new or /compress <topic>.',
         'Compression skipped — last 2 compressions saved <10% each. Consider /new or /compress <topic>.',
       );
     }
@@ -222,9 +229,16 @@ class Trimmer implements ContextManager {
     if (compressStart >= compressEnd) {
       this.lastSavingsPercent = 0;
       const newEstimate = estimateTotal(workingMessages, tools);
-      return this.makeResult(
-        workingMessages, 0, prunedCount, false,
-        newEstimate.total,
+      return this.ensureFits(
+        {
+          messages: workingMessages,
+          removedTurns: 0,
+          removedMessageCount: prunedCount,
+          summarized: false,
+          estimatedTokens: newEstimate.total,
+          tokensSaved: 0,
+        },
+        effectiveWindow,
         prunedCount > 0 ? 'pruned_only' : 'unchanged',
       );
     }
@@ -271,9 +285,9 @@ class Trimmer implements ContextManager {
               { signal, previousSummary: this.previousSummary, summaryBudget: budget },
             );
 
-            if (summaryBody.summary && summaryBody.summary.trim()) {
-              summary = formatSummary(summaryBody.summary);
-              this.previousSummary = stripSummaryPrefix(summaryBody.summary);
+            if (summaryBody.body && summaryBody.body.trim()) {
+              summary = formatSummary(summaryBody.body);
+              this.previousSummary = summaryBody.body;
               summarized = true;
               this.summaryFailureCooldownUntil = 0;
               this.lastSummaryError = undefined;
@@ -297,9 +311,10 @@ class Trimmer implements ContextManager {
             this.lastCompressAborted = true;
             this.lastSummaryError = String(err);
             this.compressionInProgress = false;
-            return this.makeResult(
+            return this.makeFailureResult(
               messages, 0, 0, false,
-              currentEstimate.total, 'aborted_auth_error',
+              currentEstimate.total, effectiveWindow, 'aborted_auth_error',
+              'Summary generation failed with auth error — check credentials.',
               'Summary generation failed with auth error — check credentials.',
             );
           } else if (this.isNetworkError(err)) {
@@ -307,19 +322,21 @@ class Trimmer implements ContextManager {
             this.lastCompressAborted = true;
             this.lastSummaryError = String(err);
             this.compressionInProgress = false;
-            return this.makeResult(
+            return this.makeFailureResult(
               messages, 0, 0, false,
-              currentEstimate.total, 'aborted_network_error',
+              currentEstimate.total, effectiveWindow, 'aborted_network_error',
+              'Summary generation failed with network error — retry with /compress.',
               'Summary generation failed with network error — retry with /compress.',
             );
           } else {
             // 其他错误 → cooldown + 回退摘要
+            // 注意：err.message 可能包含敏感信息，buildFallbackSummary 内部会调用 redactSensitiveText 脱敏
             const reason = err instanceof Error ? err.message : String(err);
             summary = buildFallbackSummary(turnsToSummarize, reason);
             summarized = true;
             trimStatus = 'fallback_summary';
             this.summaryFailureCooldownUntil = Date.now() + SUMMARY_FAILURE_COOLDOWN_MS;
-            this.lastSummaryError = reason;
+            this.lastSummaryError = '[REDACTED]'; // 不保留原始异常信息
           }
         } finally {
           this.compressionInProgress = false;
@@ -358,16 +375,41 @@ class Trimmer implements ContextManager {
       this.ineffectiveCompressionCount = 0;
     }
 
-    return {
-      messages: sanitized,
-      removedTurns: groupByTurns(turnsToSummarize).length,
-      removedMessageCount: turnsToSummarize.length,
-      summarized: summarized && !!summary,
-      summary,
-      estimatedTokens: newEstimate.total,
-      tokensSaved,
-      status: trimStatus,
-    };
+    const isSuccessStatus = (s: string): s is TrimSuccessStatus =>
+      s === 'summarized' || s === 'fallback_summary';
+
+    if (isSuccessStatus(trimStatus)) {
+      return this.ensureFits(
+        {
+          messages: sanitized,
+          removedTurns: groupByTurns(turnsToSummarize).length,
+          removedMessageCount: turnsToSummarize.length,
+          summarized: summarized && !!summary,
+          summary,
+          estimatedTokens: newEstimate.total,
+          tokensSaved,
+          warning: undefined,
+        },
+        effectiveWindow,
+        trimStatus,
+      );
+    }
+
+    // 不应该到达这里（其他状态在之前的路径中已返回）
+    return this.ensureFits(
+      {
+        messages: sanitized,
+        removedTurns: groupByTurns(turnsToSummarize).length,
+        removedMessageCount: turnsToSummarize.length,
+        summarized: summarized && !!summary,
+        summary,
+        estimatedTokens: newEstimate.total,
+        tokensSaved,
+        warning: undefined,
+      },
+      effectiveWindow,
+      'summarized',
+    );
   }
 
   estimateTokens(messages: Message[], tools?: ToolDefinition[]): number {
@@ -528,20 +570,9 @@ class Trimmer implements ContextManager {
     const n = messages.length;
     const compressed: Message[] = [];
 
-    // 头部消息：扫描整个 head 区域找 system 消息（不假设一定在 index 0）
-    let summaryMerged = false;
+    // 头部消息：保持字节级不变（包括 system prompt），不修改任何 head 消息
     for (let i = 0; i < compressStart; i++) {
-      const msg = { ...messages[i] };
-      if (!summaryMerged && msg.role === 'system' && summary && summarized) {
-        const existing = msg.content;
-        if (!existing.includes(COMPRESSION_NOTE)) {
-          msg.content = existing
-            ? `${existing}\n\n${COMPRESSION_NOTE}\n\n${summary}`
-            : `${COMPRESSION_NOTE}\n\n${summary}`;
-        }
-        summaryMerged = true;
-      }
-      compressed.push(msg);
+      compressed.push({ ...messages[i] });
     }
 
     if (summary && summarized) {
@@ -562,54 +593,29 @@ class Trimmer implements ContextManager {
           messages.slice(compressEnd).some((m) => m.role === 'user');
       }
 
-      let summaryRole: 'user' | 'assistant' = forceUserLeading || !userSurvives
-        ? 'user'
-        : lastHeadRole === 'assistant' || lastHeadRole === 'tool'
-          ? 'user'
-          : 'assistant';
-
-      let mergeIntoFirstTail = false;
-
-      // 如果 role 与 tail 第一条撞了
-      if (summaryRole === firstTailRole) {
-        const flipped: 'user' | 'assistant' =
-          summaryRole === 'user' ? 'assistant' : 'user';
-        if (flipped !== lastHeadRole && !forceUserLeading) {
-          summaryRole = flipped;
-        } else {
-          mergeIntoFirstTail = true;
-        }
+      // tail 第一条是 assistant 时 summary role 使用 user；tail 第一条是 user 时 summary role 使用 assistant
+      let summaryRole: 'user' | 'assistant';
+      if (firstTailRole === 'assistant') {
+        summaryRole = 'user';
+      } else {
+        summaryRole = 'assistant';
       }
 
-      if (mergeIntoFirstTail) {
-        // 摘要合并到第一条 tail 消息
-        const tailMsg = { ...messages[compressEnd] };
-        const oldContent = typeof tailMsg.content === 'string' ? tailMsg.content : '';
-        tailMsg.content =
-          MERGED_PRIOR_CONTEXT_HEADER + '\n' +
-          oldContent + '\n\n' +
-          MERGED_SUMMARY_DELIMITER + '\n\n' +
-          summary + '\n\n' +
-          SUMMARY_END_MARKER;
-        (tailMsg as Record<string, unknown>)[COMPRESSED_SUMMARY_METADATA_KEY] = true;
-        compressed.push(tailMsg);
+      // 如果 role 与 head 最后一条或 tail 第一条冲突，保持安全选择
+      if (summaryRole === lastHeadRole && forceUserLeading) {
+        summaryRole = 'user';
+      }
 
-        // 添加剩余尾部消息（跳过第一条）
-        for (let i = compressEnd + 1; i < n; i++) {
-          compressed.push({ ...messages[i] });
-        }
-      } else {
-        // 独立摘要消息
-        compressed.push({
-          role: summaryRole,
-          content: summary + '\n\n' + SUMMARY_END_MARKER,
-          [COMPRESSED_SUMMARY_METADATA_KEY]: true,
-        } as unknown as Message);
+      // 摘要始终作为独立消息插入 head 和 tail 之间，不合并到任何现有消息
+      compressed.push({
+        role: summaryRole,
+        content: summary,
+        [COMPRESSED_SUMMARY_METADATA_KEY]: true,
+      } as unknown as Message);
 
-        // 尾部消息
-        for (let i = compressEnd; i < n; i++) {
-          compressed.push({ ...messages[i] });
-        }
+      // 尾部消息
+      for (let i = compressEnd; i < n; i++) {
+        compressed.push({ ...messages[i] });
       }
     } else {
       // 无摘要 — 直接追加尾部
@@ -764,7 +770,8 @@ class Trimmer implements ContextManager {
     removedMessageCount: number,
     summarized: boolean,
     estimatedTokens: number,
-    status: TrimResult['status'],
+    effectiveWindow: number,
+    status: TrimSuccessStatus,
     warning?: string,
   ): TrimResult {
     return {
@@ -773,15 +780,73 @@ class Trimmer implements ContextManager {
       removedMessageCount,
       summarized,
       estimatedTokens,
+      effectiveWindow,
       tokensSaved: 0,
+      ok: true,
       status,
       warning,
     };
   }
 
-  private unchangedResult(messages: Message[]): TrimResult {
+  private makeFailureResult(
+    messages: Message[],
+    removedTurns: number,
+    removedMessageCount: number,
+    summarized: boolean,
+    estimatedTokens: number,
+    effectiveWindow: number,
+    status: TrimFailureStatus,
+    reason: string,
+    warning?: string,
+  ): TrimResult {
+    return {
+      messages,
+      removedTurns,
+      removedMessageCount,
+      summarized,
+      estimatedTokens,
+      effectiveWindow,
+      tokensSaved: 0,
+      ok: false,
+      status,
+      reason,
+      warning,
+    };
+  }
+
+  private unchangedResult(messages: Message[], effectiveWindow: number): TrimResult {
     return this.makeResult(messages, 0, 0, false,
-      estimateMessagesTokens(messages), 'unchanged',
+      estimateMessagesTokens(messages), effectiveWindow, 'unchanged',
     );
+  }
+
+  /**
+   * 守卫：ok: true 时 estimatedTokens <= effectiveWindow。
+   * 如果仍然超窗，返回 uncompressible。
+   */
+  private ensureFits(
+    base: {
+      messages: Message[];
+      removedTurns: number;
+      removedMessageCount: number;
+      summarized: boolean;
+      summary?: string;
+      estimatedTokens: number;
+      tokensSaved: number;
+      warning?: string;
+    },
+    effectiveWindow: number,
+    successStatus: TrimSuccessStatus,
+  ): TrimResult {
+    if (base.estimatedTokens > effectiveWindow) {
+      return {
+        ...base,
+        effectiveWindow,
+        ok: false,
+        status: 'uncompressible' as TrimFailureStatus,
+        reason: `Context remains over window: ${base.estimatedTokens} > ${effectiveWindow}`,
+      };
+    }
+    return { ...base, effectiveWindow, ok: true, status: successStatus };
   }
 }
