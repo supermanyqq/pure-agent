@@ -13,10 +13,14 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@pure-agent/core": "workspace:*"
+    "@pure-agent/core": "workspace:*",
+    "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "@types/react": "^19.0.0",
     "typescript": "^5.5.0"
   }
 }

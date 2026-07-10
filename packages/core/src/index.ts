@@ -1,6 +1,6 @@
 export { createDeepSeekClient, collectStreamResponse } from './provider/index.js';
 export type { DeepSeekClient, SendMessageParams, SendMessageResult, FinishReason, TokenUsage } from './types/provider.js';
-export type { Message, ToolCall, ToolDefinition, AgentStatus, ToolResult, AgentOptions, TurnOutput, ChatRequest, ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter, StreamEvent } from './types/index.js';
+export type { Message, ToolCall, ToolDefinition, AgentStatus, ToolResult, AgentOptions, TurnOutput, TurnStatus, ChatRequest, ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter, AgentEventMap, StreamEvent } from './types/index.js';
 export type { TrimResult, TrimOptions, TrimStatus, CompressionStats, Summarizer } from './types/index.js';
 // Agent Loop 模块导出
 export { AgentLoop } from './agent/loop.js';
