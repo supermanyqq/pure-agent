@@ -1,12 +1,7 @@
-import type { Message, ToolCall, ToolDefinition, StreamEvent } from './index';
+import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from './index';
 
-export type FinishReason = 'stop' | 'tool_calls' | 'length' | 'content_filter' | 'insufficient_system_resource';
-
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
+// 重新导出共享类型，保持向后兼容
+export type { FinishReason, TokenUsage };
 
 export interface SendMessageParams {
   model?: string;
@@ -17,10 +12,8 @@ export interface SendMessageParams {
   signal?: AbortSignal;
   timeout?: number;
   maxRetries?: number;
-  thinking?: {
-    type: 'enabled' | 'disabled';
-    reasoning_effort?: 'high' | 'max';
-  };
+  thinking?: { type: 'enabled' | 'disabled' };
+  reasoningEffort?: 'high' | 'max';
 }
 
 export interface SendMessageResult {

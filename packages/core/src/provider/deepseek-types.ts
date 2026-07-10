@@ -15,7 +15,8 @@ export interface DeepSeekRequestBody {
   top_p?: number;
   tools?: DeepSeekToolDefinition[];
   tool_choice?: 'none' | 'auto' | 'required' | { type: 'function'; function: { name: string } };
-  thinking?: { type: 'enabled' | 'disabled'; reasoning_effort?: 'high' | 'max' };
+  thinking?: { type: 'enabled' | 'disabled' };
+  reasoning_effort?: 'high' | 'max';
   response_format?: { type: 'text' | 'json_object' };
   stop?: string | string[];
   user_id?: string;
@@ -25,6 +26,7 @@ export interface DeepSeekMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
   name?: string;
+  reasoning_content?: string;
   tool_calls?: DeepSeekToolCall[];
   tool_call_id?: string;
 }

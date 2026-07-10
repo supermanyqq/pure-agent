@@ -1,9 +1,29 @@
+// ===== 共享 Provider 类型（避免循环依赖） =====
+
+export type FinishReason =
+  | 'stop'
+  | 'tool_calls'
+  | 'length'
+  | 'content_filter'
+  | 'insufficient_system_resource';
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 // ===== 消息类型 =====
 
 export type Message =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string | null; toolCalls?: ToolCall[] }
+  | {
+      role: 'assistant';
+      content: string | null;
+      reasoningContent?: string;
+      toolCalls?: ToolCall[];
+    }
   | { role: 'tool'; content: string; toolCallId: string };
 
 // ===== 工具调用（OpenAI 兼容格式）=====
@@ -32,6 +52,7 @@ export interface ToolResult {
   toolCallId: string;
   content: string;
   error?: string;
+  [key: string]: unknown;
 }
 
 // ===== Agent 状态 =====
@@ -55,11 +76,20 @@ export interface AgentOptions {
 
 // ===== Turn 输出 =====
 
+export type TurnStatus =
+  | 'completed'
+  | 'max_steps'
+  | 'aborted'
+  | 'truncated'
+  | 'content_filtered'
+  | 'error';
+
 export interface TurnOutput {
   messages: Message[];
   steps: number;
-  status: 'completed' | 'max_steps' | 'aborted' | 'error';
+  status: TurnStatus;
   error?: Error;
+  finishReason?: FinishReason;
 }
 
 // ===== 请求构造 =====
@@ -78,10 +108,12 @@ export interface ChatRequest {
 // StreamEvent 定义在此而非 provider/deepseek-client，避免 types → provider 循环依赖
 // Provider 层实现此类型，AgentLoop 消费此类型
 export type StreamEvent =
+  | { type: 'reasoning'; content: string }
   | { type: 'text'; content: string }
   | { type: 'tool_call_start'; id: string; name: string }
   | { type: 'tool_call_delta'; id: string; arguments: string }
-  | { type: 'done'; finishReason: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } };
+  | { type: 'done'; finishReason: FinishReason; usage?: TokenUsage }
+  | { type: 'aborted' };
 
 export interface ChatProvider {
   streamMessage(params: {
@@ -93,6 +125,8 @@ export interface ChatProvider {
     signal?: AbortSignal;
     timeout?: number;
     maxRetries?: number;
+    thinking?: { type: 'enabled' | 'disabled' };
+    reasoningEffort?: 'high' | 'max';
   }): AsyncGenerator<StreamEvent>;
 }
 
@@ -123,35 +157,70 @@ export interface ContextManager {
   updateModel(model: string, contextLength: number): void;
 }
 
+export interface AgentEventMap {
+  'agent:turn:start': { messages: Message[] };
+  'agent:step:start': { step: number };
+  'agent:thinking': { step: number };
+  'agent:stream:delta': { content: string };
+  'agent:tool_calls': { toolCalls: ToolCall[] };
+  'agent:executing': { toolCalls: ToolCall[] };
+  'agent:tool_result': ToolResult;
+  'agent:response': { content: string };
+  'agent:abort': Record<string, never>;
+  'agent:error': { error: Error };
+  'agent:turn:end': {
+    messages: Message[];
+    steps: number;
+    status: TurnStatus;
+    finishReason?: FinishReason;
+  };
+}
+
 export interface AgentEventEmitter {
-  emit(type: string, payload?: Record<string, unknown>): void;
+  emit<K extends keyof AgentEventMap>(
+    type: K,
+    payload: AgentEventMap[K],
+  ): void;
 }
 
 // ===== Context Management 类型 =====
 
-/** fitToWindow 的返回结果 */
-export interface TrimResult {
+export type TrimSuccessStatus =
+  | 'unchanged'
+  | 'pruned_only'
+  | 'summarized'
+  | 'fallback_summary';
+
+export type TrimFailureStatus =
+  | 'compression_busy'
+  | 'skipped_thrashing'
+  | 'aborted_auth_error'
+  | 'aborted_network_error'
+  | 'uncompressible';
+
+interface TrimBase {
   messages: Message[];
   removedTurns: number;
   removedMessageCount: number;
   summarized: boolean;
   summary?: string;
   estimatedTokens: number;
+  effectiveWindow: number;
   tokensSaved: number;
-  /** 压缩结果状态码 */
-  status: TrimStatus;
-  /** 面向用户或日志的警告信息 */
   warning?: string;
 }
 
-export type TrimStatus =
-  | 'unchanged'
-  | 'pruned_only'
-  | 'summarized'
-  | 'fallback_summary'
-  | 'skipped_thrashing'
-  | 'aborted_auth_error'
-  | 'aborted_network_error';
+/** fitToWindow 的返回结果 — 可判别联合类型 */
+export type TrimResult =
+  | (TrimBase & { ok: true; status: TrimSuccessStatus })
+  | (TrimBase & {
+      ok: false;
+      status: TrimFailureStatus;
+      reason: string;
+    });
+
+// 保留 TrimStatus 联合类型以保持向后兼容
+export type TrimStatus = TrimSuccessStatus | TrimFailureStatus;
 
 /** fitToWindow 的调用选项（每次调用可覆盖） */
 export interface TrimOptions {
@@ -176,11 +245,11 @@ export interface Summarizer {
   summarize(messages: Message[], options: SummarizeOptions): Promise<SummaryResult>;
 }
 
-/** 摘要结果 */
+/** 摘要结果 — body 为未格式化正文，不含前缀/后缀标记 */
 export interface SummaryResult {
-  summary: string;
-  tokensUsed: number;
+  body: string;
   method: 'llm' | 'fallback';
+  usage?: TokenUsage;
 }
 
 /** 摘要选项 */

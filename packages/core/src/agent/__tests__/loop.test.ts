@@ -60,7 +60,9 @@ function createMockContextManager(): ContextManager {
       removedMessageCount: 0,
       summarized: false,
       estimatedTokens: 0,
+      effectiveWindow: 100000,
       tokensSaved: 0,
+      ok: true as const,
       status: 'unchanged' as const,
     }),
     estimateTokens: (msgs: Message[]) =>
@@ -84,7 +86,7 @@ function createMockEvents(): AgentEventEmitter & { events: Array<{ type: string;
     emit(type: string, payload?: unknown) {
       events.push({ type, payload });
     },
-  };
+  } as unknown as AgentEventEmitter & { events: Array<{ type: string; payload?: unknown }> };
 }
 
 // ===== 测试数据 =====
@@ -412,7 +414,8 @@ describe('AgentLoop', () => {
       new AbortController().signal,
     );
 
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('truncated');
+    expect(result.finishReason).toBe('length');
     const assistantMsg = result.messages[result.messages.length - 1];
     expect(assistantMsg.role).toBe('assistant');
     expect((assistantMsg as { content: string }).content).toContain('partial response');

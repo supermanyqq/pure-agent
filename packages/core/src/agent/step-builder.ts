@@ -1,6 +1,7 @@
 import type { Message, ToolDefinition, ChatRequest, AgentOptions } from '../types/index.js';
 import type { ContextManager } from '../types/index.js';
-export { ContextWindowError } from '../types/index.js';
+import { ContextWindowError } from '../types/index.js';
+export { ContextWindowError };
 
 /**
  * 将消息历史、工具列表、Agent 配置组装为 LLM API 调用所需的 ChatRequest。
@@ -36,7 +37,16 @@ export class StepBuilder {
       },
     );
 
-    // 2a. 记录裁剪日志
+    // 2a. fitToWindow 门禁：只有 ok === true 才允许进入 Provider
+    if (!trimResult.ok) {
+      throw new ContextWindowError(
+        trimResult.reason,
+        trimResult.estimatedTokens,
+        trimResult.effectiveWindow,
+      );
+    }
+
+    // 2b. 记录裁剪日志
     if (trimResult.removedTurns > 0) {
       console.warn(
         `[context] Trimmed ${trimResult.removedTurns} turns ` +
@@ -46,8 +56,14 @@ export class StepBuilder {
       );
     }
 
-    // 2b. 验证 system 消息未被裁剪修改（prompt caching 关键条件）
-    this.validateSystemPrompt(messagesWithSystem, trimResult.messages);
+    // 2c. 验证 system 消息未被裁剪修改（prompt caching 关键条件）
+    if (!this.validateSystemPrompt(messagesWithSystem, trimResult.messages)) {
+      throw new ContextWindowError(
+        'System prompt was modified or removed during fitToWindow',
+        trimResult.estimatedTokens,
+        trimResult.effectiveWindow,
+      );
+    }
 
     // 如果裁剪时需要 abort
     if (signal.aborted) {
@@ -92,12 +108,13 @@ export class StepBuilder {
   /**
    * 验证 system 消息在 fitToWindow 后未被修改。
    * system 消息变化会导致 prompt caching 前缀不匹配，所有后续请求 cache miss。
+   * 返回 false 表示验证失败。
    */
   private validateSystemPrompt(
     original: Message[],
     trimmed: Message[],
-  ): void {
-    if (trimmed.length === 0) return;
+  ): boolean {
+    if (trimmed.length === 0) return true;
 
     const originalSystem = original[0];
     const trimmedSystem = trimmed[0];
@@ -108,13 +125,14 @@ export class StepBuilder {
         trimmedSystem?.role === 'system' &&
         originalSystem?.content === trimmedSystem?.content)
     ) {
-      return;
+      return true;
     }
 
     console.warn(
       '[StepBuilder] System prompt was modified or removed during fitToWindow. ' +
         'This will cause prompt cache misses for all subsequent steps in this turn.',
     );
+    return false;
   }
 
   /**

@@ -18,9 +18,13 @@ export {
   estimateToolDefinitions,
   estimateTotal,
   estimateMsgBudgetTokens,
-  countMessageTokensExact,
-  countMessagesTokensExact,
-  countTokensBest,
+  countMessageTokensBpe,
+  countMessagesTokensBpe,
+  countTokensBestEffort,
+  // 向后兼容别名
+  countMessageTokensBpe as countMessageTokensExact,
+  countMessagesTokensBpe as countMessagesTokensExact,
+  countTokensBestEffort as countTokensBest,
   groupByTurns,
   getRecentTurns,
   getTurnCount,
@@ -60,11 +64,11 @@ export { createConsoleEmitter } from './events/emitter.js';
 // System Prompt
 export { DEFAULT_SYSTEM_PROMPT, formatSystemPrompt } from './system-prompt.js';
 
-// Tokenizer (DeepSeek V3 BPE — exact token counting)
+// Tokenizer (DeepSeek V3 BPE — 实验性本地 BPE，未经官方 golden vectors 验证)
 export {
   initTokenizer,
   encode,
-  countTokens as countTokensExact,
+  countTokens as countTokensBpe,
   decode,
   isInitialized as isTokenizerInitialized,
   loadTokenizerData,

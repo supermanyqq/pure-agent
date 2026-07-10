@@ -42,6 +42,14 @@ export class SSEParseError extends ProviderError {
   }
 }
 
+/** 流在收到 finish reason 之前结束，无法生成合法 done 事件 */
+export class IncompleteStreamError extends ProviderError {
+  constructor(message = 'Provider stream ended before a finish reason was received') {
+    super(message, 'INCOMPLETE_STREAM', true);
+    this.name = 'IncompleteStreamError';
+  }
+}
+
 /** DeepSeek API 返回的业务错误（余额不足、模型不存在等），由 deepseek-client 抛出 */
 export class ApiError extends ProviderError {
   constructor(message: string, retryable = false) {

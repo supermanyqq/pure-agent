@@ -9,7 +9,9 @@ function makeTrimResult(messages: Message[]): TrimResult {
     removedMessageCount: 0,
     summarized: false,
     estimatedTokens: 0,
+    effectiveWindow: 100000,
     tokensSaved: 0,
+    ok: true as const,
     status: 'unchanged',
   };
 }

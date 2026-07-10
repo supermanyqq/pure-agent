@@ -188,12 +188,12 @@ export function initTokenizer(data: TokenizerData): void {
   cachedAddedTokens = config.addedTokens;
   cachedReverseAddedTokens = config.reverseAddedTokens;
 
-  // 向 context/token-counter 注册精确计数函数
+  // 向 context/token-counter 注册 BPE 计数函数
   try {
-    const { setExactCounter } = require('../context/token-counter.js') as {
-      setExactCounter: (fn: (text: string) => number) => void;
+    const { setBpeCounter } = require('../context/token-counter.js') as {
+      setBpeCounter: (fn: (text: string) => number) => void;
     };
-    setExactCounter(countTokens);
+    setBpeCounter(countTokens);
   } catch {
     // context 模块可能尚未加载，静默跳过
   }

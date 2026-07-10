@@ -1,10 +1,10 @@
-import type { Message, ToolCall, ToolDefinition, StreamEvent } from '../types';
-import type { SendMessageParams, SendMessageResult, TokenUsage, DeepSeekClient, FinishReason } from '../types/provider';
+import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from '../types';
+import type { SendMessageParams, SendMessageResult, DeepSeekClient } from '../types/provider';
 import type { ProviderConfig } from '../config/types';
 import type { DeepSeekRequestBody, DeepSeekStreamChunk } from './deepseek-types';
 import { httpRequest } from './http-client';
-import { parseSSEStream } from './sse-parser';
-import { HttpAbortError } from './errors';
+import { parseSSEStream, type SSEEvent } from './sse-parser';
+import { HttpAbortError, IncompleteStreamError, SSEParseError } from './errors';
 
 // StreamEvent 类型已移至 types/index.ts 以避免 types → provider 循环依赖
 // 此处重新导出一份以保持向后兼容
@@ -18,7 +18,8 @@ function buildRequestBody(params: {
   tools?: ToolDefinition[];
   maxTokens?: number;
   temperature?: number;
-  thinking?: { type: 'enabled' | 'disabled'; reasoning_effort?: 'high' | 'max' };
+  thinking?: { type: 'enabled' | 'disabled' };
+  reasoningEffort?: 'high' | 'max';
 }): DeepSeekRequestBody {
   const body: DeepSeekRequestBody = {
     model: params.model,
@@ -35,6 +36,7 @@ function buildRequestBody(params: {
   if (params.maxTokens !== undefined) body.max_tokens = params.maxTokens;
   if (params.temperature !== undefined) body.temperature = params.temperature;
   if (params.thinking) body.thinking = params.thinking;
+  if (params.reasoningEffort) body.reasoning_effort = params.reasoningEffort;
 
   return body;
 }
@@ -42,20 +44,28 @@ function buildRequestBody(params: {
 function mapMessageToDeepSeek(message: Message): {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
+  reasoning_content?: string;
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
 } {
-  const base = { role: message.role, content: message.content };
+  const base: {
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string | null;
+    reasoning_content?: string;
+    tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+    tool_call_id?: string;
+  } = { role: message.role, content: message.content };
+
+  if (message.role === 'assistant' && 'reasoningContent' in message && message.reasoningContent) {
+    base.reasoning_content = message.reasoningContent;
+  }
 
   if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) {
-    return {
-      ...base,
-      tool_calls: message.toolCalls.map(tc => ({
-        id: tc.id,
-        type: tc.type,
-        function: { name: tc.function.name, arguments: tc.function.arguments },
-      })),
-    };
+    base.tool_calls = message.toolCalls.map(tc => ({
+      id: tc.id,
+      type: tc.type,
+      function: { name: tc.function.name, arguments: tc.function.arguments },
+    }));
   }
 
   if (message.role === 'tool') {
@@ -76,6 +86,35 @@ function mapToolDefinitionToDeepSeek(tool: ToolDefinition) {
   };
 }
 
+// ─── SSE → DeepSeek JSON 解析 ──────────────────
+
+/**
+ * 将通用 SSEEvent 解析为 DeepSeekStreamChunk。
+ * 畸形 JSON 必须抛出 SSEParseError，不能静默跳过。
+ */
+function parseDeepSeekEvent(event: SSEEvent): DeepSeekStreamChunk | null {
+  if (event.data === '[DONE]') return null;
+  try {
+    return JSON.parse(event.data) as DeepSeekStreamChunk;
+  } catch (error: unknown) {
+    throw new SSEParseError(
+      error instanceof Error
+        ? `Invalid DeepSeek SSE JSON: ${error.message}`
+        : 'Invalid DeepSeek SSE JSON',
+    );
+  }
+}
+
+/** 将 SSEEvent 流转换为 DeepSeekStreamChunk 流，跳过 [DONE] 标记 */
+async function* mapSSEToChunks(
+  sseEvents: AsyncGenerator<SSEEvent>,
+): AsyncGenerator<DeepSeekStreamChunk> {
+  for await (const event of sseEvents) {
+    const chunk = parseDeepSeekEvent(event);
+    if (chunk) yield chunk;
+  }
+}
+
 // ─── aggregateStream ───────────────────────────
 
 interface ToolCallAccumulator {
@@ -88,17 +127,29 @@ async function* aggregateStream(
   chunks: AsyncGenerator<DeepSeekStreamChunk>,
 ): AsyncGenerator<StreamEvent> {
   const toolCallAccumulators = new Map<number, ToolCallAccumulator>();
-  let finalFinishReason = 'stop';
+  let finalFinishReason: FinishReason | undefined;
   let finalUsage: TokenUsage | undefined;
 
   for await (const chunk of chunks) {
+    // 先提取 usage（usage-only 终帧没有 choices，但仍需记录 usage）
+    if (chunk.usage) {
+      finalUsage = {
+        promptTokens: chunk.usage.prompt_tokens,
+        completionTokens: chunk.usage.completion_tokens,
+        totalTokens: chunk.usage.total_tokens,
+      };
+    }
+
     const choice = chunk.choices[0];
     if (!choice) continue;
 
     const delta = choice.delta;
     const finishReason = choice.finish_reason;
 
-    // reasoning_content delta — 跳过，不暴露到 StreamEvent
+    // reasoning_content delta — 发射 reasoning 事件（Agent Loop 累积但不转发 UI）
+    if (delta.reasoning_content) {
+      yield { type: 'reasoning', content: delta.reasoning_content };
+    }
 
     // Text delta
     if (delta.content) {
@@ -138,15 +189,12 @@ async function* aggregateStream(
     }
 
     if (finishReason) finalFinishReason = finishReason;
-    if (chunk.usage) {
-      finalUsage = {
-        promptTokens: chunk.usage.prompt_tokens,
-        completionTokens: chunk.usage.completion_tokens,
-        totalTokens: chunk.usage.total_tokens,
-      };
-    }
   }
 
+  // 没有 finish reason 的流必须失败，不能静默生成 done
+  if (!finalFinishReason) {
+    throw new IncompleteStreamError();
+  }
   yield { type: 'done', finishReason: finalFinishReason, usage: finalUsage };
 }
 
@@ -164,6 +212,7 @@ async function* streamMessage(
     maxTokens: params.maxTokens,
     temperature: params.temperature,
     thinking: params.thinking,
+    reasoningEffort: params.reasoningEffort,
   });
 
   try {
@@ -180,11 +229,18 @@ async function* streamMessage(
       maxRetries: params.maxRetries,
     });
 
-    const chunks = parseSSEStream(res.body);
+    const sseEvents = parseSSEStream(res.body);
+    const chunks = mapSSEToChunks(sseEvents);
     yield* aggregateStream(chunks);
   } catch (error: unknown) {
-    if (error instanceof HttpAbortError) return;
-    if (error instanceof DOMException && error.name === 'AbortError') return;
+    if (error instanceof HttpAbortError) {
+      yield { type: 'aborted' };
+      return;
+    }
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      yield { type: 'aborted' };
+      return;
+    }
     throw error;
   }
 }
@@ -201,12 +257,16 @@ export async function collectStreamResponse(
   stream: AsyncGenerator<StreamEvent>,
 ): Promise<SendMessageResult> {
   let text = '';
+  let reasoningContent = '';
   const toolCallsMap = new Map<string, { name: string; argumentsStr: string }>();
-  let finishReason: FinishReason = 'stop';
+  let finishReason: FinishReason | undefined;
   let usage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for await (const event of stream) {
     switch (event.type) {
+      case 'reasoning':
+        reasoningContent += event.content;
+        break;
       case 'text':
         text += event.content;
         break;
@@ -219,10 +279,19 @@ export async function collectStreamResponse(
         }
         break;
       case 'done':
-        finishReason = event.finishReason as FinishReason;
+        finishReason = event.finishReason;
         if (event.usage) usage = event.usage;
         break;
+      case 'aborted':
+        throw new DOMException('Aborted', 'AbortError');
     }
+  }
+
+  // 防御：流结束但未收到 done 事件 → 视为不完整响应
+  if (!finishReason) {
+    throw new IncompleteStreamError(
+      'Stream ended without a done event — response may be incomplete',
+    );
   }
 
   const toolCalls: ToolCall[] = Array.from(toolCallsMap.entries())
