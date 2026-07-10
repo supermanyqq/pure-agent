@@ -1,4 +1,4 @@
-import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from './index';
+import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from './index.js';
 
 // 重新导出共享类型，保持向后兼容
 export type { FinishReason, TokenUsage };

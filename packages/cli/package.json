@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
+  "bin": {
+    "pure-agent": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",

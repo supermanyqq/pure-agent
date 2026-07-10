@@ -8,11 +8,12 @@
  *
  * 环境变量：
  *   PURE_AGENT_API_KEY    — DeepSeek API key（必需）
- *   PURE_AGENT_MODEL      — 模型名（默认 deepseek-chat）
+ *   PURE_AGENT_MODEL      — 模型名（默认 deepseek-v4-pro）
  *   PURE_AGENT_BASE_URL   — API 地址（默认 https://api.deepseek.com）
  */
 
 import * as readline from 'node:readline';
+import type { Message, TurnOutput } from '@pure-agent/core';
 import {
   createDeepSeekClient,
   createEmptyToolRegistry,
@@ -36,38 +37,64 @@ const agent = new AgentLoop(provider, toolRegistry, contextManager, events);
 
 const DEFAULT_MAX_STEPS = 10;
 
-// ===== 运行一次对话 =====
+// ===== 多轮对话 =====
 
-async function runOnce(userInput: string): Promise<void> {
-  const signal = new AbortController().signal;
+class Conversation {
+  private messages: Message[] = [];
 
-  const result = await agent.run(
-    [{ role: 'user' as const, content: userInput }],
-    {
-      model: config.defaultModel,
-      maxSteps: DEFAULT_MAX_STEPS,
-      maxTokens: config.maxTokens,
-      temperature: config.temperature,
-      systemPrompt: formatSystemPrompt(DEFAULT_SYSTEM_PROMPT),
-    },
-    signal,
-  );
+  constructor(systemPrompt: string) {
+    this.messages = [{ role: 'system', content: systemPrompt }];
+  }
 
-  if (result.status === 'error') {
-    console.error('\n[ERROR]', result.error?.message ?? 'Unknown error');
-    process.exitCode = 1;
+  async send(userInput: string): Promise<TurnOutput> {
+    const signal = new AbortController().signal;
+
+    // 追加用户消息
+    this.messages.push({ role: 'user', content: userInput });
+
+    // 运行 Agent Loop（含上下文管理）
+    const result = await agent.run(
+      this.messages,
+      {
+        model: config.defaultModel,
+        maxSteps: DEFAULT_MAX_STEPS,
+        maxTokens: config.maxTokens,
+        temperature: config.temperature,
+      },
+      signal,
+    );
+
+    // 用 Agent 返回的完整消息历史（含 assistant/tool 消息）替换当前历史
+    this.messages = result.messages;
+
+    return result;
+  }
+
+  /** 重置对话，保留 system prompt */
+  reset(): void {
+    const systemMsg = this.messages[0]?.role === 'system'
+      ? this.messages[0]
+      : { role: 'system' as const, content: '' };
+    this.messages = [systemMsg];
   }
 }
 
 // ===== 主入口 =====
 
 async function main(): Promise<void> {
+  const systemPrompt = formatSystemPrompt(DEFAULT_SYSTEM_PROMPT);
   const args = process.argv.slice(2);
 
   // 命令行参数模式：pure-agent "你的问题"
   if (args.length > 0) {
     const question = args.join(' ');
-    await runOnce(question);
+    const conv = new Conversation(systemPrompt);
+    const result = await conv.send(question);
+
+    if (result.status === 'error') {
+      console.error('\n[ERROR]', result.error?.message ?? 'Unknown error');
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -79,26 +106,49 @@ async function main(): Promise<void> {
     }
     const input = chunks.join('').trim();
     if (input) {
-      await runOnce(input);
-      return;
+      const conv = new Conversation(systemPrompt);
+      const result = await conv.send(input);
+
+      if (result.status === 'error') {
+        console.error('\n[ERROR]', result.error?.message ?? 'Unknown error');
+        process.exitCode = 1;
+      }
     }
+    return;
   }
 
-  // 交互模式：逐行对话
+  // 交互模式：多轮对话
+  const conv = new Conversation(systemPrompt);
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: '> ',
   });
 
-  console.log('Pure Agent — type your question (Ctrl+D to exit)');
+  console.log('Pure Agent — multi-turn conversation (Ctrl+D to exit, /new to reset)');
   rl.prompt();
 
   for await (const line of rl) {
     const trimmed = line.trim();
     if (trimmed === 'exit' || trimmed === 'quit') break;
+    if (trimmed === '/new') {
+      conv.reset();
+      contextManager.reset();
+      console.log('[Conversation reset]');
+      rl.prompt();
+      continue;
+    }
     if (trimmed) {
-      await runOnce(trimmed);
+      try {
+        const result = await conv.send(trimmed);
+        if (result.status === 'error') {
+          console.error('[ERROR]', result.error?.message ?? 'Unknown error');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[ERROR]', msg);
+      }
     }
     rl.prompt();
   }

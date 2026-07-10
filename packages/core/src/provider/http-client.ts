@@ -1,5 +1,5 @@
 import ky, { HTTPError as KyHTTPError, TimeoutError as KyTimeoutError } from 'ky';
-import { HttpError, HttpAbortError } from './errors';
+import { HttpError, HttpAbortError } from './errors.js';
 
 export interface HttpRequest {
   url: string;

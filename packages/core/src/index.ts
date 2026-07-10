@@ -1,7 +1,7 @@
-export { createDeepSeekClient, collectStreamResponse } from './provider';
-export type { DeepSeekClient, SendMessageParams, SendMessageResult, FinishReason, TokenUsage } from './types/provider';
-export type { Message, ToolCall, ToolDefinition, AgentStatus, ToolResult, AgentOptions, TurnOutput, ChatRequest, ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter, StreamEvent } from './types';
-export type { TrimResult, TrimOptions, TrimStatus, CompressionStats, Summarizer } from './types';
+export { createDeepSeekClient, collectStreamResponse } from './provider/index.js';
+export type { DeepSeekClient, SendMessageParams, SendMessageResult, FinishReason, TokenUsage } from './types/provider.js';
+export type { Message, ToolCall, ToolDefinition, AgentStatus, ToolResult, AgentOptions, TurnOutput, ChatRequest, ChatProvider, ToolRegistry, ContextManager, AgentEventEmitter, StreamEvent } from './types/index.js';
+export type { TrimResult, TrimOptions, TrimStatus, CompressionStats, Summarizer } from './types/index.js';
 // Agent Loop 模块导出
 export { AgentLoop } from './agent/loop.js';
 export { StepBuilder, ContextWindowError } from './agent/step-builder.js';
@@ -52,7 +52,7 @@ export {
 } from './context/index.js';
 
 // Config
-export type { ProviderConfig } from './config/types';
+export type { ProviderConfig } from './config/types.js';
 export { loadProviderConfig } from './config/loader.js';
 
 // Tools

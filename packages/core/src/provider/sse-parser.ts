@@ -14,7 +14,7 @@
  * 7. comment、未知字段忽略；event 和 id 按规范保留
  */
 
-import { SSEParseError } from './errors';
+import { SSEParseError } from './errors.js';
 
 const SSE_DATA_PREFIX = 'data:';
 const SSE_DONE_MARKER = '[DONE]';

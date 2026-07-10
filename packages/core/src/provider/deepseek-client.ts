@@ -1,10 +1,10 @@
-import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from '../types';
-import type { SendMessageParams, SendMessageResult, DeepSeekClient } from '../types/provider';
-import type { ProviderConfig } from '../config/types';
-import type { DeepSeekRequestBody, DeepSeekStreamChunk } from './deepseek-types';
-import { httpRequest } from './http-client';
-import { parseSSEStream, type SSEEvent } from './sse-parser';
-import { HttpAbortError, IncompleteStreamError, SSEParseError } from './errors';
+import type { Message, ToolCall, ToolDefinition, StreamEvent, FinishReason, TokenUsage } from '../types/index.js';
+import type { SendMessageParams, SendMessageResult, DeepSeekClient } from '../types/provider.js';
+import type { ProviderConfig } from '../config/types.js';
+import type { DeepSeekRequestBody, DeepSeekStreamChunk } from './deepseek-types.js';
+import { httpRequest } from './http-client.js';
+import { parseSSEStream, type SSEEvent } from './sse-parser.js';
+import { HttpAbortError, IncompleteStreamError, SSEParseError } from './errors.js';
 
 // StreamEvent 类型已移至 types/index.ts 以避免 types → provider 循环依赖
 // 此处重新导出一份以保持向后兼容
