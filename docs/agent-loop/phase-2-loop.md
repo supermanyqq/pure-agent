@@ -489,7 +489,7 @@ export class AgentLoop {
 
 ### thinking 事件时机
 
-`agent:thinking` 在 `stepBuilder.build()` **之后**、`provider.chatStream()` **之前**发射。这确保"正在思考"指示器只在真正等待 LLM 响应时显示，不包含请求构建时间。
+`agent:thinking` 在 `stepBuilder.build()` **之后**、`provider.streamMessage()` **之前**发射。这确保"正在思考"指示器只在真正等待 LLM 响应时显示，不包含请求构建时间。
 
 ### executing 事件
 

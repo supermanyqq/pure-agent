@@ -581,7 +581,7 @@ function createTestOptions(overrides?: Partial<AgentOptions>): AgentOptions {
 StepBuilder 产出的 `ChatRequest` 是 Phase 2（Core Loop）的输入，Loop 将其传给 Provider：
 
 ```
-StepBuilder.build() → ChatRequest → provider.chatStream(request, signal)
+StepBuilder.build() → ChatRequest → provider.streamMessage(request, signal)
 ```
 
 StepBuilder 对 Loop 的承诺：

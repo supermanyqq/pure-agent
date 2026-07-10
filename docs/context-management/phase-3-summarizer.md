@@ -283,12 +283,11 @@ async function summarizeWithLLM(
   const request: ChatRequest = {
     model: options.model, // 使用主模型
     messages: [{ role: 'user', content: prompt }],
-    stream: false, // 摘要不需要流式
     max_tokens: summaryBudget,
     temperature: 0.3, // 低温度，结构化输出
   };
 
-  const response = await provider.chat(request, options.signal);
+  const response = await provider.streamMessage(request, options.signal);
 
   // 二次脱敏（纵深防御：LLM 可能忽略 prompt 中的"不要包含凭证"）
   const safe = redactSensitiveText(response.content);
