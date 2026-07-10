@@ -53,7 +53,7 @@ export function loadProviderConfig(overrides?: Partial<ProviderConfig>): Provide
     );
   }
 
-  return {
+  const config: ProviderConfig = {
     apiKey,
     baseUrl: overrides?.baseUrl ?? process.env.PURE_AGENT_BASE_URL ?? fileConfig.baseUrl ?? DEFAULT_BASE_URL,
     defaultModel: overrides?.defaultModel ?? process.env.PURE_AGENT_MODEL ?? fileConfig.defaultModel ?? DEFAULT_MODEL,
@@ -63,11 +63,15 @@ export function loadProviderConfig(overrides?: Partial<ProviderConfig>): Provide
     timeout: overrides?.timeout ?? parseEnvInt('PURE_AGENT_TIMEOUT') ?? fileConfig.timeout ?? DEFAULT_TIMEOUT_MS,
     maxRetries: overrides?.maxRetries ?? parseEnvInt('PURE_AGENT_MAX_RETRIES') ?? fileConfig.maxRetries ?? DEFAULT_MAX_RETRIES,
   };
+
+  return validateProviderConfig(config);
 }
 
 function parseEnvInt(key: string): number | undefined {
   const v = process.env[key];
   if (v === undefined) return undefined;
+  // 完整字符串校验：拒绝 "3abc" 这类部分数字
+  if (!/^-?\d+$/.test(v.trim())) return undefined;
   const n = parseInt(v, 10);
   return isNaN(n) ? undefined : n;
 }
@@ -75,6 +79,36 @@ function parseEnvInt(key: string): number | undefined {
 function parseEnvFloat(key: string): number | undefined {
   const v = process.env[key];
   if (v === undefined) return undefined;
+  // 完整字符串校验：拒绝非数字内容
+  if (!/^-?\d+(\.\d+)?$/.test(v.trim())) return undefined;
   const n = parseFloat(v);
   return isNaN(n) ? undefined : n;
+}
+
+/**
+ * 校验 ProviderConfig 的语义合法性。
+ * 在合并所有来源后调用，非法配置立即失败。
+ */
+function validateProviderConfig(config: ProviderConfig): ProviderConfig {
+  if (!Number.isFinite(config.maxTokens) || config.maxTokens <= 0) {
+    throw new Error('maxTokens must be a positive finite number');
+  }
+  if (!Number.isFinite(config.timeout) || config.timeout <= 0) {
+    throw new Error('timeout must be a positive finite number');
+  }
+  if (!Number.isInteger(config.maxRetries) || config.maxRetries < 0) {
+    throw new Error('maxRetries must be a non-negative integer');
+  }
+  if (!Number.isFinite(config.temperature)) {
+    throw new Error('temperature must be finite');
+  }
+  try {
+    const url = new URL(config.baseUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new Error('baseUrl must use http or https');
+    }
+  } catch {
+    throw new Error('baseUrl is not a valid URL');
+  }
+  return config;
 }
