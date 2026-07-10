@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Message, AgentOptions, TurnOutput, AgentEventMap, FinishReason } from '@pure-agent/core';
 import {
   AgentLoop,
@@ -65,14 +65,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const agentRef = useRef<AgentLoop | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const initErrorRef = useRef<string | null>(null);
 
-  // 懒初始化 agent
-  const getAgent = useCallback(() => {
+  // 懒初始化 agent（首次调用时立刻触发，展示配置错误）
+  const getAgent = useCallback((): AgentLoop | null => {
+    if (initErrorRef.current) return null;
     if (!agentRef.current) {
-      const config = loadProviderConfig();
-      const provider = createDeepSeekClient(config);
-      const toolRegistry = createEmptyToolRegistry();
-      const contextManager = createContextManager();
+      try {
+        const config = loadProviderConfig();
+        const provider = createDeepSeekClient(config);
+        const toolRegistry = createEmptyToolRegistry();
+        const contextManager = createContextManager();
 
       const emitter = {
         emit: <K extends keyof AgentEventMap>(type: K, payload: AgentEventMap[K]): void => {
@@ -157,7 +160,11 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         },
       };
 
-      agentRef.current = new AgentLoop(provider, toolRegistry, contextManager, emitter);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        initErrorRef.current = msg;
+        return null;
+      }
     }
     return agentRef.current;
   }, []);
@@ -165,6 +172,16 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const send = useCallback(
     async (userInput: string): Promise<void> => {
       const agent = getAgent();
+
+      // Agent 初始化失败 → 直接显示错误
+      if (!agent) {
+        setState((prev) => ({
+          ...prev,
+          status: 'error',
+          lastError: initErrorRef.current ?? 'Agent initialization failed',
+        }));
+        return;
+      }
 
       // 添加用户消息到 UI
       const userMsg: UIMessage = {
@@ -247,6 +264,18 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const abort = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  // 启动时立即尝试初始化 Agent，让配置错误在首帧就显示
+  useEffect(() => {
+    const agent = getAgent();
+    if (!agent && initErrorRef.current) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error' as const,
+        lastError: initErrorRef.current,
+      }));
+    }
+  }, [getAgent]);
 
   return { state, send, reset, abort };
 }

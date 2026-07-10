@@ -13,26 +13,38 @@
  *   PURE_AGENT_BASE_URL   — API 地址（默认 https://api.deepseek.com）
  */
 
-import { render, Text, Box } from 'ink';
+import { render } from 'ink';
 import React from 'react';
 import { App } from './app.js';
 
 const args = process.argv.slice(2);
+const isTTY = process.stdout.isTTY && process.stdin.isTTY;
 
-// ===== 管道模式 / 命令行参数模式 / 非 TTY → 纯文本输出 =====
+// ===== 管道 / 参数 / 非 TTY → 纯文本回退 =====
 
-if (!process.stdout.isTTY || !process.stdin.isTTY || args.length > 0) {
-  // 使用原有的纯文本模式（不依赖 Ink）
-  const { runPlainText } = await import('./plain.js');
-  await runPlainText(args);
+if (!isTTY || args.length > 0) {
+  try {
+    const { runPlainText } = await import('./plain.js');
+    await runPlainText(args);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('\n[FATAL]', msg);
+    process.exit(1);
+  }
 } else {
   // ===== 交互模式 → Ink TUI =====
-  const { waitUntilExit } = render(
-    React.createElement(App, {}),
-    {
-      exitOnCtrlC: true,
-      patchConsole: true,
-    },
-  );
-  await waitUntilExit;
+  try {
+    const { waitUntilExit } = render(
+      React.createElement(App, {}),
+      {
+        exitOnCtrlC: true,
+        patchConsole: true,
+      },
+    );
+    await waitUntilExit;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('\n[FATAL]', msg);
+    process.exit(1);
+  }
 }
