@@ -147,9 +147,17 @@ export function InputBar({
     { isActive: true },
   );
 
-  if (disabled) {
-    return (
-      <Box marginTop={1}>
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderTop
+      borderBottom
+      borderLeft={false}
+      borderRight={false}
+      borderDimColor
+    >
+      {disabled ? (
         <Text dimColor>
           {status === 'thinking' || status === 'streaming'
             ? 'Waiting for response… (Ctrl+C to cancel)'
@@ -157,13 +165,7 @@ export function InputBar({
               ? 'Executing tools… (Ctrl+C to cancel)'
               : 'Processing…'}
         </Text>
-      </Box>
-    );
-  }
-
-  return (
-    <Box marginTop={1} flexDirection="column">
-      {picker ? (
+      ) : picker ? (
         <OptionPicker options={getPickerOptions(picker)} selectedIndex={pickerIndex} />
       ) : (
         <>

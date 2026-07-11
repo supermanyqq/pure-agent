@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在交互式多轮会话中提供 `/help`、`/new`、`/model`、`/effort` 和 `/config`，并让切换设置只影响下一次请求。
+**Goal:** 在交互式多轮会话中提供 `/help`、`/new`、`/model`、`/effort` 和 `/config`，并让切换设置只影响下一次请求；无参数的 model/effort 命令通过键盘选择器完成切换。
 
 **Architecture:** slash 解析器和 effort 映射是无 React、无 IO 的纯函数；`useAgent` 保存消息、状态、API Key 可用性和 `SessionSettings`，在每轮启动时从当前设置生成 `AgentOptions`。命令处理结果作为 notice 或配置输入意图返回给 App，而不是伪造为 assistant message。
 
@@ -71,6 +71,8 @@ export type SlashCommand =
 ```
 
 `SLASH_COMMANDS` 是用于菜单和帮助的一份数据源，每项包含 `name`、`usage`、`description`。`parseInput()` 对普通文本不改变内容，对 command 参数使用 `trim()`。
+
+模型目录固定为 `deepseek-v4-pro` 与 `deepseek-v4-flash`；parser 拒绝其他 `/model <id>` 值。无参数的 `/model` 或 `/effort` 返回 `picker` 意图，而非 notice：hook 保留会话设置，InputBar 显示当前值高亮的列表，↑/↓ 移动、Enter 应用、Esc 取消。选择器开启时，方向键不得访问聊天历史。
 
 - [ ] **Step 4: 写 effort 映射失败测试**
 

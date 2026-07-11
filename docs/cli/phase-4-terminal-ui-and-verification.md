@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让模型/effort 状态和 slash commands 在 Ink TUI 中可发现，并以自动化、构建和实际 CLI 调用证明全部入口可用。
+**Goal:** 让模型/effort 状态和 slash commands 在 Ink TUI 中可发现，Composer 固定在终端底部，并以自动化、构建和实际 CLI 调用证明全部入口可用。
 
-**Architecture:** 命令元数据由 parser 模块单一维护，`CommandMenu` 只过滤并显示它，`StatusBar` 只渲染状态。验证分层覆盖纯函数、Core 契约、构建，以及使用临时 HOME 的编译后 CLI 冒烟路径。
+**Architecture:** 命令元数据由 parser 模块单一维护，`CommandMenu` 只过滤并显示它，`commands/completion.ts` 从同一元数据实现 Tab 循环，`StatusBar` 只渲染状态。App 的聊天视口可收缩，末尾 Composer 使用水平边框固定在终端底部。验证分层覆盖纯函数、Core 契约、构建，以及使用临时 HOME 的编译后 CLI 冒烟路径。
 
 **Tech Stack:** React 19、Ink、Vitest、TypeScript、pnpm、Node.js。
 
@@ -12,15 +12,19 @@
 
 - 不引入额外 TUI 框架或全屏终端控制库。
 - 命令菜单不能改变历史上下箭头行为，也不能泄露 API Key。
+- 模型选择只允许 `deepseek-v4-pro` 与 `deepseek-v4-flash`；effort 只允许四个既有值。
+- Tab 只能补全 slash command 名，不能补全 API Key、模型参数或 effort 参数。
 - 终端 smoke test 必须使用临时 HOME，绝不读取或修改真实用户配置。
 - 不以 typecheck 代替行为测试；不以单测代替编译后 CLI 验证。
 
 ---
 
-### Task 1: 增加命令可发现性和会话状态呈现
+### Task 1: 增加命令可发现性、选择器和会话状态呈现
 
 **Files:**
 - Create: `packages/cli/src/components/CommandMenu.tsx`
+- Create: `packages/cli/src/components/OptionPicker.tsx`
+- Create: `packages/cli/src/commands/completion.ts`
 - Modify: `packages/cli/src/components/InputBar.tsx`
 - Modify: `packages/cli/src/components/StatusBar.tsx`
 - Modify: `packages/cli/src/app.tsx`
@@ -52,7 +56,7 @@ Expected: FAIL，因为 `CommandMenu` 和筛选函数尚不存在。
 
 - [ ] **Step 2: 实现最小菜单组件**
 
-`CommandMenu` 接收 `input: string`。仅当 `input.trimStart().startsWith('/')` 时渲染，逐行显示命令 `usage` 和 `description`，颜色与现有绿色标题、dim 辅助信息保持一致。`InputBar` 在 `<TextInput>` 上方渲染菜单并继续持有输入状态；不添加新的键盘劫持。
+`CommandMenu` 接收 `input: string`。仅当 `input.trimStart().startsWith('/')` 时渲染，逐行显示命令 `usage` 和 `description`，颜色与现有绿色标题、dim 辅助信息保持一致。`InputBar` 在 `<TextInput>` 上方渲染菜单并继续持有输入状态；Tab 由 `commands/completion.ts` 补全或循环命令名。`OptionPicker` 在无参数 `/model` 或 `/effort` 后显示当前值高亮的列表，并接管 ↑/↓、Enter、Esc。
 
 - [ ] **Step 3: 显示实时设置与通知**
 
@@ -62,7 +66,7 @@ Expected: FAIL，因为 `CommandMenu` 和筛选函数尚不存在。
 <Text dimColor>{`Model: ${settings.model} · Effort: ${settings.effort}`}</Text>
 ```
 
-App 标题提示更新为 `Ctrl+C 中止当前轮次，输入 / 查看命令`。把 `state.notice` 作为一条与 assistant message 样式不同的 `Text dimColor` 渲染，使 `/model`、`/effort`、`/help` 有可见反馈。
+App 标题提示更新为 `Ctrl+C 中止当前轮次，输入 / 查看命令`。把 `state.notice` 作为一条与 assistant message 样式不同的 `Text dimColor` 渲染，使直接 `/model <id>`、`/effort <value>`、`/help` 有可见反馈。App 的根布局使用 stdout 行数，聊天区 `flexGrow` + `overflow="hidden"`，并将只带上下边框的 Composer 作为末尾子项。
 
 - [ ] **Step 4: 验证 CLI 测试与类型检查**
 
