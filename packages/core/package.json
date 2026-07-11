@@ -33,7 +33,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prepack": "pnpm run clean && pnpm run build"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

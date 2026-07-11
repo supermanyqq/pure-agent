@@ -30,7 +30,8 @@
     "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prepack": "pnpm --filter @pure-agent/core run build && pnpm run clean && pnpm run build"
   },
   "dependencies": {
     "@pure-agent/core": "^0.1.0",
