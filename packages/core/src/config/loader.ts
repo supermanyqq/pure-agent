@@ -23,6 +23,8 @@ const CONFIG_FILE_MODE = 0o600;
 const JSON_INDENTATION_SPACES = 2;
 const TEMPORARY_FILE_SUFFIX = '.tmp';
 const API_KEY_DISPLAY_PREFIX_LENGTH = 3;
+const API_KEY_START_INDEX = 0;
+const DECIMAL_RADIX = 10;
 const FILE_NOT_FOUND_ERROR_CODE = 'ENOENT';
 const CONFIG_FILE_ENCODING = 'utf8';
 const CONFIG_FILE_NEWLINE = '\n';
@@ -83,7 +85,7 @@ export function saveApiKey(apiKey: string, options: ConfigFileOptions = {}): voi
 export function redactApiKey(apiKey: string | undefined): string {
   if (!apiKey) return 'not configured';
   if (apiKey.length <= API_KEY_DISPLAY_PREFIX_LENGTH) return '***';
-  return `${apiKey.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH)}…`;
+  return `${apiKey.slice(API_KEY_START_INDEX, API_KEY_DISPLAY_PREFIX_LENGTH)}…`;
 }
 
 /** Loads the CLI-only defaults that do not require an API Key. */
@@ -191,7 +193,7 @@ function parseEnvInt(key: string): number | undefined {
   if (v === undefined) return undefined;
   // 完整字符串校验：拒绝 "3abc" 这类部分数字
   if (!/^-?\d+$/.test(v.trim())) return undefined;
-  const n = parseInt(v, 10);
+  const n = parseInt(v, DECIMAL_RADIX);
   return isNaN(n) ? undefined : n;
 }
 

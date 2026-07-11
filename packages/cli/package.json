@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/react": "^19.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.10"
   }
 }

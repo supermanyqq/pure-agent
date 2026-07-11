@@ -16,20 +16,38 @@
 import { render } from 'ink';
 import React from 'react';
 import { App } from './app.js';
+import { runConfigCommand } from './config-command.js';
 
 const args = process.argv.slice(2);
 const isTTY = process.stdout.isTTY && process.stdin.isTTY;
+const CONFIG_COMMAND = 'config';
+const FIRST_ARGUMENT_INDEX = 0;
+const CONFIG_ARGUMENT_OFFSET = 1;
+const FAILURE_EXIT_CODE = 1;
 
-// ===== 管道 / 参数 / 非 TTY → 纯文本回退 =====
+function exitWithFatalError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('\n[FATAL]', message);
+  process.exit(FAILURE_EXIT_CODE);
+}
 
-if (!isTTY || args.length > 0) {
+if (args[FIRST_ARGUMENT_INDEX] === CONFIG_COMMAND) {
+  try {
+    await runConfigCommand(args.slice(CONFIG_ARGUMENT_OFFSET), {
+      input: process.stdin,
+      output: process.stdout,
+      isInteractive: Boolean(process.stdin.isTTY),
+    });
+  } catch (error) {
+    exitWithFatalError(error);
+  }
+} else if (!isTTY || args.length > 0) {
+  // ===== 管道 / 参数 / 非 TTY → 纯文本回退 =====
   try {
     const { runPlainText } = await import('./plain.js');
     await runPlainText(args);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('\n[FATAL]', msg);
-    process.exit(1);
+  } catch (error) {
+    exitWithFatalError(error);
   }
 } else {
   // ===== 交互模式 → Ink TUI =====
@@ -42,9 +60,7 @@ if (!isTTY || args.length > 0) {
       },
     );
     await waitUntilExit;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('\n[FATAL]', msg);
-    process.exit(1);
+  } catch (error) {
+    exitWithFatalError(error);
   }
 }
