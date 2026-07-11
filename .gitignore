@@ -35,3 +35,4 @@ out/
 release/
 
 hermes-agent/
+.worktrees/
