@@ -20,21 +20,39 @@ export interface SlashCommandDefinition {
   name: string;
   usage: string;
   description: string;
+  acceptsArguments: boolean;
 }
 
 export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
-  { name: HELP_COMMAND, usage: HELP_COMMAND, description: 'Show available commands.' },
-  { name: NEW_COMMAND, usage: NEW_COMMAND, description: 'Start a new conversation.' },
-  { name: MODEL_COMMAND, usage: `${MODEL_COMMAND} <model-id>`, description: 'Show or switch the model.' },
+  {
+    name: HELP_COMMAND,
+    usage: HELP_COMMAND,
+    description: 'Show available commands.',
+    acceptsArguments: false,
+  },
+  {
+    name: NEW_COMMAND,
+    usage: NEW_COMMAND,
+    description: 'Start a new conversation.',
+    acceptsArguments: false,
+  },
+  {
+    name: MODEL_COMMAND,
+    usage: `${MODEL_COMMAND} <model-id>`,
+    description: 'Show or switch the model.',
+    acceptsArguments: true,
+  },
   {
     name: EFFORT_COMMAND,
     usage: `${EFFORT_COMMAND} <off|low|medium|high>`,
     description: 'Show or switch reasoning effort.',
+    acceptsArguments: true,
   },
   {
     name: CONFIG_COMMAND,
     usage: `${CONFIG_COMMAND} [set api-key]`,
     description: 'Show configuration or securely set an API key.',
+    acceptsArguments: true,
   },
 ];
 

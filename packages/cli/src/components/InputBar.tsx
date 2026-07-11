@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { getNextCommandCompletion } from '../commands/completion.js';
+import type { CommandCompletionState } from '../commands/completion.js';
 import type { AgentStatus } from '../types.js';
 import { CommandMenu } from './CommandMenu.js';
 
@@ -16,6 +18,7 @@ export function InputBar({ onSubmit, onAbort, onCancelApiKeyEntry, status, mode 
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  const [completionState, setCompletionState] = useState<CommandCompletionState | null>(null);
   const disabled = status === 'thinking' || status === 'streaming' || status === 'executing';
   const isApiKeyEntry = mode === 'api-key';
 
@@ -27,8 +30,18 @@ export function InputBar({ onSubmit, onAbort, onCancelApiKeyEntry, status, mode 
       setHistoryIdx(-1);
     }
     setInput('');
+    setCompletionState(null);
     onSubmit(trimmed);
   };
+
+  const handleChange = (value: string): void => {
+    setCompletionState(null);
+    setInput(value);
+  };
+
+  useEffect(() => {
+    setCompletionState(null);
+  }, [mode]);
 
   // 全局快捷键: Ctrl+C 中断，上下箭头翻历史
   useInput(
@@ -48,6 +61,17 @@ export function InputBar({ onSubmit, onAbort, onCancelApiKeyEntry, status, mode 
       }
 
       if (isApiKeyEntry) return;
+
+      if (key.tab) {
+        const completion = getNextCommandCompletion(input, completionState);
+        if (completion) {
+          setInput(completion.input);
+          setCompletionState(completion.state);
+        }
+        return;
+      }
+
+      setCompletionState(null);
 
       if (key.upArrow) {
         const newIdx = historyIdx < history.length - 1 ? historyIdx + 1 : historyIdx;
@@ -90,7 +114,7 @@ export function InputBar({ onSubmit, onAbort, onCancelApiKeyEntry, status, mode 
         </Text>
         <TextInput
           value={input}
-          onChange={setInput}
+          onChange={handleChange}
           onSubmit={handleSubmit}
           placeholder={isApiKeyEntry ? 'Paste API key and press Enter…' : 'Type a message or / for commands…'}
           mask={isApiKeyEntry ? '*' : undefined}
