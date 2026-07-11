@@ -18,7 +18,7 @@ importers:
   packages/cli:
     dependencies:
       '@pure-agent/core':
-        specifier: workspace:*
+        specifier: ^0.1.0
         version: link:../core
       ink:
         specifier: ^6.6.0

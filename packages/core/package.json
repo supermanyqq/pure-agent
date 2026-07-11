@@ -1,10 +1,28 @@
 {
   "name": "@pure-agent/core",
   "version": "0.1.0",
-  "private": true,
+  "description": "Core runtime for Pure Agent.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supermanyqq/pure-agent.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/supermanyqq/pure-agent/issues"
+  },
+  "homepage": "https://github.com/supermanyqq/pure-agent#readme",
+  "keywords": ["agent", "ai", "deepseek", "llm"],
   "exports": {
     ".": {
       "import": "./dist/index.js",
