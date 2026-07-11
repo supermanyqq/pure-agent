@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { performance } from 'node:perf_hooks';
 import type { AgentEventMap, AgentOptions, FinishReason, Message } from '@pure-agent/core';
 import {
   AgentLoop,
@@ -21,6 +22,12 @@ import {
 import type { SessionSettings } from '../session-settings.js';
 import { resolveSupportedModel } from '../runtime-options.js';
 import type { SupportedModel } from '../runtime-options.js';
+import {
+  clearThoughtTiming,
+  createThoughtTimingState,
+  finishThoughtTiming,
+  startThoughtTiming,
+} from '../thought-timing.js';
 import { getNewTurnMessages } from '../turn-messages.js';
 import type { AgentState, ApiKeyStatus, PickerState, UIMessage } from '../types.js';
 
@@ -41,13 +48,19 @@ function nextId(): string {
   return `msg-${messageIdCounter}`;
 }
 
-function messageToUI(message: Message): UIMessage {
+function messageToUI(message: Message, thoughtDurationMs?: number): UIMessage {
   const content = typeof message.content === 'string' ? message.content : '';
   const toolCallNames =
     message.role === 'assistant' && 'toolCalls' in message && message.toolCalls
       ? message.toolCalls.map((toolCall) => toolCall.function.name)
       : undefined;
-  return { id: nextId(), role: message.role, content, toolCallNames };
+  return {
+    id: nextId(),
+    role: message.role,
+    content,
+    thoughtDurationMs,
+    toolCallNames,
+  };
 }
 
 export interface UseAgentOptions {
@@ -93,6 +106,7 @@ function createIdleState(
   return {
     status: 'idle',
     streamingText: '',
+    streamingThoughtDurationMs: null,
     toolCallNames: [],
     completedMessages: [],
     currentStep: 0,
@@ -117,6 +131,13 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const settingsRef = useRef<SessionSettings>(state.settings);
   const abortRef = useRef<AbortController | null>(null);
   const initErrorRef = useRef<string | null>(null);
+  const thoughtTimingRef = useRef(createThoughtTimingState());
+
+  function finishCurrentThoughtTiming(): number | null {
+    const finished = finishThoughtTiming(thoughtTimingRef.current, performance.now());
+    thoughtTimingRef.current = finished.state;
+    return finished.durationMs;
+  }
 
   const getAgent = useCallback((): AgentLoop | null => {
     if (initErrorRef.current) return null;
@@ -131,18 +152,28 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
             switch (type) {
               case 'agent:stream:delta': {
                 const streamDelta = payload as AgentEventMap['agent:stream:delta'];
+                const thoughtDurationMs = streamDelta.content
+                  ? finishCurrentThoughtTiming()
+                  : null;
                 setState((previous) => ({
                   ...previous,
                   status: 'streaming',
                   streamingText: previous.streamingText + streamDelta.content,
+                  streamingThoughtDurationMs:
+                    previous.streamingThoughtDurationMs ?? thoughtDurationMs,
                 }));
                 break;
               }
               case 'agent:thinking':
+                thoughtTimingRef.current = startThoughtTiming(
+                  thoughtTimingRef.current,
+                  performance.now(),
+                );
                 setState((previous) => ({
                   ...previous,
                   status: 'thinking',
                   streamingText: '',
+                  streamingThoughtDurationMs: null,
                   toolCallNames: [],
                 }));
                 break;
@@ -153,6 +184,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
               }
               case 'agent:tool_calls': {
                 const toolCalls = payload as AgentEventMap['agent:tool_calls'];
+                finishCurrentThoughtTiming();
                 setState((previous) => ({
                   ...previous,
                   status: 'executing',
@@ -165,6 +197,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                 setState((previous) => ({
                   ...previous,
                   status: 'error',
+                  streamingText: '',
+                  streamingThoughtDurationMs: null,
                   lastError: agentError.error.message,
                 }));
                 break;
@@ -174,6 +208,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                   ...previous,
                   status: 'idle',
                   streamingText: '',
+                  streamingThoughtDurationMs: null,
                 }));
                 break;
               case 'agent:turn:end': {
@@ -181,13 +216,18 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                 const newMessages = getNewTurnMessages(
                   turnEnd.messages,
                   messageCountBeforeTurnRef.current,
+                  thoughtTimingRef.current.completedDurationsMs,
                 );
-                const uiMessages = newMessages.map(messageToUI);
+                const uiMessages = newMessages.map(({ message, thoughtDurationMs }) =>
+                  messageToUI(message, thoughtDurationMs),
+                );
                 messagesRef.current = turnEnd.messages;
+                thoughtTimingRef.current = clearThoughtTiming(thoughtTimingRef.current);
                 setState((previous) => ({
                   ...previous,
                   status: 'idle',
                   streamingText: '',
+                  streamingThoughtDurationMs: null,
                   toolCallNames: [],
                   completedMessages: [...previous.completedMessages, ...uiMessages],
                   currentStep: 0,
@@ -220,6 +260,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
     agentRef.current = null;
     abortRef.current = null;
     initErrorRef.current = null;
+    thoughtTimingRef.current = clearThoughtTiming(thoughtTimingRef.current);
     setState(createIdleState(settings, notice));
   }, []);
 
@@ -250,10 +291,12 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
       role: 'user',
       content: userInput,
     };
+    thoughtTimingRef.current = clearThoughtTiming(thoughtTimingRef.current);
     setState((previous) => ({
       ...previous,
       status: 'thinking',
       streamingText: '',
+      streamingThoughtDurationMs: null,
       toolCallNames: [],
       lastError: null,
       notice: null,
@@ -311,6 +354,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         saveApiKey(input);
         agentRef.current = null;
         initErrorRef.current = null;
+        thoughtTimingRef.current = clearThoughtTiming(thoughtTimingRef.current);
         setState((previous) => ({
           ...previous,
           status: 'idle',
