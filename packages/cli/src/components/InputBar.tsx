@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { getNextCommandCompletion } from '../commands/completion.js';
 import type { CommandCompletionState } from '../commands/completion.js';
+import { getNextInputInstanceKey } from '../input-instance.js';
 import { getNextPickerIndex, OptionPicker } from './OptionPicker.js';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../runtime-options.js';
 import type { RuntimeOption } from '../runtime-options.js';
@@ -21,6 +22,8 @@ interface InputBarProps {
   picker: PickerState | null;
   settings: SessionSettings;
 }
+
+const INITIAL_INPUT_INSTANCE_KEY = 0;
 
 function getPickerOptions(picker: PickerState): readonly RuntimeOption<string>[] {
   return picker.kind === 'model' ? MODEL_OPTIONS : EFFORT_OPTIONS;
@@ -45,6 +48,7 @@ export function InputBar({
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [completionState, setCompletionState] = useState<CommandCompletionState | null>(null);
+  const [inputInstanceKey, setInputInstanceKey] = useState(INITIAL_INPUT_INSTANCE_KEY);
   const [pickerIndex, setPickerIndex] = useState(0);
   const disabled = status === 'thinking' || status === 'streaming' || status === 'executing';
   const isApiKeyEntry = mode === 'api-key';
@@ -123,6 +127,7 @@ export function InputBar({
         if (completion) {
           setInput(completion.input);
           setCompletionState(completion.state);
+          setInputInstanceKey((currentKey) => getNextInputInstanceKey(currentKey, true));
         }
         return;
       }
@@ -175,6 +180,7 @@ export function InputBar({
               {isApiKeyEntry ? 'API key (hidden) > ' : '> '}
             </Text>
             <TextInput
+              key={inputInstanceKey}
               value={input}
               onChange={handleChange}
               onSubmit={handleSubmit}
