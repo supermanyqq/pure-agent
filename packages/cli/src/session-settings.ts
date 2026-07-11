@@ -1,10 +1,11 @@
 import type { ReasoningEffort } from '@pure-agent/core';
+import type { SupportedModel } from './runtime-options.js';
 
 const THINKING_ENABLED = { type: 'enabled' as const };
 const THINKING_DISABLED = { type: 'disabled' as const };
 
 export interface SessionSettings {
-  model: string;
+  model: SupportedModel;
   effort: ReasoningEffort;
 }
 
@@ -15,7 +16,7 @@ export interface ReasoningOptions {
 
 /** Creates the mutable settings that apply to future requests in one session. */
 export function createSessionSettings(
-  model: string,
+  model: SupportedModel,
   effort: ReasoningEffort,
 ): SessionSettings {
   return { model, effort };

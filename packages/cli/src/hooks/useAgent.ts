@@ -19,11 +19,12 @@ import {
   toReasoningOptions,
 } from '../session-settings.js';
 import type { SessionSettings } from '../session-settings.js';
+import { resolveSupportedModel } from '../runtime-options.js';
+import type { SupportedModel } from '../runtime-options.js';
 import { getNewTurnMessages } from '../turn-messages.js';
 import type { AgentState, ApiKeyStatus, UIMessage } from '../types.js';
 
 const INITIAL_MESSAGE_ID_COUNTER = 0;
-const DEFAULT_MODEL = 'deepseek-v4-pro';
 const DEFAULT_MAX_STEPS = 10;
 const DEFAULT_MAX_TOKENS = 4_096;
 const DEFAULT_TEMPERATURE = 0;
@@ -50,7 +51,7 @@ function messageToUI(message: Message): UIMessage {
 }
 
 export interface UseAgentOptions {
-  model?: string;
+  model?: SupportedModel;
   maxSteps?: number;
   maxTokens?: number;
   temperature?: number;
@@ -70,11 +71,11 @@ function createInitialSettings(options: UseAgentOptions): SessionSettings {
   try {
     const providerConfig = loadProviderConfig();
     return createSessionSettings(
-      options.model ?? providerConfig.defaultModel,
+      resolveSupportedModel(options.model ?? providerConfig.defaultModel),
       cliConfig.defaultEffort,
     );
   } catch {
-    return createSessionSettings(options.model ?? DEFAULT_MODEL, cliConfig.defaultEffort);
+    return createSessionSettings(resolveSupportedModel(options.model), cliConfig.defaultEffort);
   }
 }
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { applySlashCommand } from '../commands/handlers.js';
+import type { SessionSettings } from '../session-settings.js';
 
-const INITIAL_SETTINGS = {
+const INITIAL_SETTINGS: SessionSettings = {
   model: 'deepseek-v4-pro',
-  effort: 'medium' as const,
+  effort: 'medium',
 };
 
 describe('applySlashCommand', () => {

@@ -1,4 +1,6 @@
 import type { ReasoningEffort } from '@pure-agent/core';
+import { isSupportedModel } from '../runtime-options.js';
+import type { SupportedModel } from '../runtime-options.js';
 
 const COMMAND_PREFIX = '/';
 const EMPTY_ARGUMENT_COUNT = 0;
@@ -39,7 +41,7 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
 export type SlashCommand =
   | { type: 'help' }
   | { type: 'new' }
-  | { type: 'model'; model?: string }
+  | { type: 'model'; model?: SupportedModel }
   | { type: 'effort'; effort?: ReasoningEffort }
   | { type: 'config'; action: 'show' | 'set-api-key' };
 
@@ -80,6 +82,12 @@ function parseModelCommand(args: string[]): ParsedInput {
   }
   const model = args.join(SPACE_SEPARATOR).trim();
   if (!model) return { kind: 'invalid-command', message: `Usage: ${MODEL_COMMAND} <model-id>` };
+  if (!isSupportedModel(model)) {
+    return {
+      kind: 'invalid-command',
+      message: 'Model must be one of: deepseek-v4-pro, deepseek-v4-flash.',
+    };
+  }
   return { kind: 'command', command: { type: 'model', model } };
 }
 

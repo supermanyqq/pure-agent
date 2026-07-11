@@ -16,6 +16,13 @@ describe('parseInput', () => {
     });
   });
 
+  it('拒绝目录外的模型', () => {
+    expect(parseInput('/model unknown-model')).toEqual({
+      kind: 'invalid-command',
+      message: 'Model must be one of: deepseek-v4-pro, deepseek-v4-flash.',
+    });
+  });
+
   it('解析不带参数的查询命令', () => {
     expect(parseInput('/model')).toEqual({
       kind: 'command',
