@@ -1,4 +1,5 @@
 import type { Message, ToolCall, TurnStatus, FinishReason } from '@pure-agent/core';
+import type { SessionSettings } from './session-settings.js';
 export type { TurnStatus, FinishReason };
 
 /** 一条聊天消息的 UI 展示 */
@@ -28,4 +29,6 @@ export interface AgentState {
   lastError: string | null;
   lastStatus: TurnStatus | null;
   lastFinishReason: FinishReason | null;
+  settings: SessionSettings;
+  notice: string | null;
 }

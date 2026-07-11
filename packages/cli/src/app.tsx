@@ -11,18 +11,18 @@ interface AppProps {
 
 export function App({ initialQuestion }: AppProps) {
   const { exit } = useApp();
-  const { state, send, reset, abort } = useAgent();
+  const { state, submit, abort } = useAgent();
 
   // 命令行参数模式
   const hasSentRef = useRef(false);
   useEffect(() => {
     if (initialQuestion && !hasSentRef.current) {
       hasSentRef.current = true;
-      send(initialQuestion).then(() => {
+      submit(initialQuestion).then(() => {
         setTimeout(() => exit(), 100);
       });
     }
-  }, [initialQuestion, send, exit]);
+  }, [initialQuestion, submit, exit]);
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -31,7 +31,7 @@ export function App({ initialQuestion }: AppProps) {
         <Text bold color="green">
           Pure Agent
         </Text>
-        <Text dimColor> — AI Chat (Ctrl+C to exit, /new to reset)</Text>
+        <Text dimColor> — AI Chat (Ctrl+C to cancel, / for commands)</Text>
       </Box>
 
       {/* 启动时的配置错误 */}
@@ -67,6 +67,12 @@ export function App({ initialQuestion }: AppProps) {
         </Box>
       )}
 
+      {state.notice && (
+        <Box paddingLeft={2} marginBottom={1}>
+          <Text dimColor>{state.notice}</Text>
+        </Box>
+      )}
+
       {/* 状态栏 */}
       <StatusBar
         status={state.status}
@@ -75,13 +81,13 @@ export function App({ initialQuestion }: AppProps) {
         lastError={state.lastError}
         lastStatus={state.lastStatus}
         lastFinishReason={state.lastFinishReason}
+        settings={state.settings}
       />
 
       {/* 输入栏 */}
       <InputBar
         onSubmit={(text) => {
-          if (text === '/new') reset();
-          else send(text);
+          submit(text);
         }}
         onAbort={abort}
         status={state.status}

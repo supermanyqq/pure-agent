@@ -12,12 +12,15 @@ import {
   createContextManager,
   createConsoleEmitter,
   AgentLoop,
+  loadCliConfig,
   loadProviderConfig,
   formatSystemPrompt,
   DEFAULT_SYSTEM_PROMPT,
 } from '@pure-agent/core';
+import { toReasoningOptions } from './session-settings.js';
 
 const config = loadProviderConfig();
+const cliConfig = loadCliConfig();
 const provider = createDeepSeekClient(config);
 const toolRegistry = createEmptyToolRegistry();
 const contextManager = createContextManager();
@@ -38,6 +41,7 @@ class Conversation {
       maxSteps: DEFAULT_MAX_STEPS,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
+      ...toReasoningOptions(cliConfig.defaultEffort),
     }, signal);
     this.messages = result.messages;
     return result;

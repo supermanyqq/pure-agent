@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import type { AgentStatus } from '../types.js';
+import { CommandMenu } from './CommandMenu.js';
 
 interface InputBarProps {
   onSubmit: (text: string) => void;
@@ -68,16 +69,19 @@ export function InputBar({ onSubmit, onAbort, status }: InputBarProps) {
   }
 
   return (
-    <Box marginTop={1} flexDirection="row">
-      <Text color="cyan" bold>
-        &gt;{' '}
-      </Text>
-      <TextInput
-        value={input}
-        onChange={setInput}
-        onSubmit={handleSubmit}
-        placeholder="Type a message…"
-      />
+    <Box marginTop={1} flexDirection="column">
+      <CommandMenu input={input} />
+      <Box flexDirection="row">
+        <Text color="cyan" bold>
+          &gt;{' '}
+        </Text>
+        <TextInput
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          placeholder="Type a message or / for commands…"
+        />
+      </Box>
     </Box>
   );
 }
