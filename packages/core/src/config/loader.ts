@@ -1,15 +1,106 @@
-import type { ProviderConfig } from './types.js';
-import { readFileSync } from 'node:fs';
+import type {
+  CliConfig,
+  ConfigFileOptions,
+  ProviderConfig,
+  ReasoningEffort,
+  StoredConfig,
+} from './types.js';
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com';
 const DEFAULT_MODEL = 'deepseek-v4-pro';
+const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'medium';
 const DEFAULT_MAX_TOKENS = 4_096;
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 3;
-const CONFIG_FILE_PATH = join(homedir(), '.pure-agent', 'config.json');
+const CONFIG_DIRECTORY_NAME = '.pure-agent';
+const CONFIG_FILE_NAME = 'config.json';
+const CONFIG_DIRECTORY_MODE = 0o700;
+const CONFIG_FILE_MODE = 0o600;
+const JSON_INDENTATION_SPACES = 2;
+const TEMPORARY_FILE_SUFFIX = '.tmp';
+const API_KEY_DISPLAY_PREFIX_LENGTH = 3;
+const FILE_NOT_FOUND_ERROR_CODE = 'ENOENT';
+const CONFIG_FILE_ENCODING = 'utf8';
+const CONFIG_FILE_NEWLINE = '\n';
+
+/** Returns the default per-user configuration file path. */
+export function getConfigFilePath(): string {
+  return join(homedir(), CONFIG_DIRECTORY_NAME, CONFIG_FILE_NAME);
+}
+
+/**
+ * Reads the persisted JSON configuration without environment-variable overrides.
+ * Missing files produce an empty configuration; invalid JSON must be surfaced to writers.
+ */
+export function readStoredConfig(options: ConfigFileOptions = {}): StoredConfig {
+  const configPath = resolveConfigPath(options);
+  try {
+    const raw = readFileSync(configPath, CONFIG_FILE_ENCODING);
+    return parseStoredConfig(raw, configPath);
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) return {};
+    throw error;
+  }
+}
+
+/** Saves an API Key without exposing it in command output or error messages. */
+export function saveApiKey(apiKey: string, options: ConfigFileOptions = {}): void {
+  const normalizedApiKey = apiKey.trim();
+  if (!normalizedApiKey) {
+    throw new Error('API key must not be empty');
+  }
+
+  const configPath = resolveConfigPath(options);
+  const current = readStoredConfig({ configPath });
+  const provider = isRecord(current.provider) ? current.provider : {};
+  const next: StoredConfig = {
+    ...current,
+    provider: {
+      ...provider,
+      apiKey: normalizedApiKey,
+    },
+  };
+  const directoryPath = dirname(configPath);
+  const temporaryConfigPath = `${configPath}${TEMPORARY_FILE_SUFFIX}`;
+  const serialized = `${JSON.stringify(next, null, JSON_INDENTATION_SPACES)}${CONFIG_FILE_NEWLINE}`;
+
+  mkdirSync(directoryPath, { recursive: true, mode: CONFIG_DIRECTORY_MODE });
+  chmodSync(directoryPath, CONFIG_DIRECTORY_MODE);
+  writeFileSync(temporaryConfigPath, serialized, {
+    encoding: CONFIG_FILE_ENCODING,
+    mode: CONFIG_FILE_MODE,
+  });
+  chmodSync(temporaryConfigPath, CONFIG_FILE_MODE);
+  renameSync(temporaryConfigPath, configPath);
+  chmodSync(configPath, CONFIG_FILE_MODE);
+}
+
+/** Returns an API Key display value that never includes the complete secret. */
+export function redactApiKey(apiKey: string | undefined): string {
+  if (!apiKey) return 'not configured';
+  if (apiKey.length <= API_KEY_DISPLAY_PREFIX_LENGTH) return '***';
+  return `${apiKey.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH)}…`;
+}
+
+/** Loads the CLI-only defaults that do not require an API Key. */
+export function loadCliConfig(options: ConfigFileOptions = {}): CliConfig {
+  try {
+    const storedConfig = readStoredConfig(options);
+    const cli = isRecord(storedConfig.cli) ? storedConfig.cli : {};
+    const defaultEffort = cli['defaultEffort'];
+    return {
+      defaultEffort: isReasoningEffort(defaultEffort)
+        ? defaultEffort
+        : DEFAULT_REASONING_EFFORT,
+    };
+  } catch {
+    return { defaultEffort: DEFAULT_REASONING_EFFORT };
+  }
+}
 
 /**
  * 从 ~/.pure-agent/config.json 读取配置。
@@ -17,10 +108,8 @@ const CONFIG_FILE_PATH = join(homedir(), '.pure-agent', 'config.json');
  */
 function loadConfigFile(): Partial<ProviderConfig> {
   try {
-    const raw = readFileSync(CONFIG_FILE_PATH, 'utf-8');
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    const provider = (parsed['provider'] as Record<string, unknown>) ?? {};
+    const parsed = readStoredConfig();
+    const provider = isRecord(parsed.provider) ? parsed.provider : {};
     return {
       apiKey: typeof provider['apiKey'] === 'string' ? provider['apiKey'] : undefined,
       baseUrl: typeof provider['baseUrl'] === 'string' ? provider['baseUrl'] : undefined,
@@ -34,6 +123,36 @@ function loadConfigFile(): Partial<ProviderConfig> {
     // 文件不存在或解析失败 → 静默跳过
     return {};
   }
+}
+
+function resolveConfigPath(options: ConfigFileOptions): string {
+  return options.configPath ?? getConfigFilePath();
+}
+
+function parseStoredConfig(raw: string, configPath: string): StoredConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Configuration file contains invalid JSON: ${configPath}`);
+  }
+  if (!isRecord(parsed)) {
+    throw new Error(`Configuration file must contain a JSON object: ${configPath}`);
+  }
+  return parsed;
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && error.code === FILE_NOT_FOUND_ERROR_CODE;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return value === 'off' || value === 'low' || value === 'medium' || value === 'high';
 }
 
 /**

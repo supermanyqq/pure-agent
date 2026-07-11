@@ -52,8 +52,22 @@ export {
 } from './context/index.js';
 
 // Config
-export type { ProviderConfig } from './config/types.js';
-export { loadProviderConfig } from './config/loader.js';
+export type {
+  CliConfig,
+  ConfigFileOptions,
+  ProviderConfig,
+  ReasoningEffort,
+  StoredConfig,
+  StoredConfigSection,
+} from './config/types.js';
+export {
+  getConfigFilePath,
+  loadCliConfig,
+  loadProviderConfig,
+  readStoredConfig,
+  redactApiKey,
+  saveApiKey,
+} from './config/loader.js';
 
 // Tools
 export { createEmptyToolRegistry } from './tools/empty-registry.js';
