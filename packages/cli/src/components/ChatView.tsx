@@ -1,25 +1,37 @@
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { Message } from './Message.js';
 import type { UIMessage, AgentStatus } from '../types.js';
 
 interface ChatViewProps {
   completedMessages: UIMessage[];
   streamingText: string;
+  streamingThoughtDurationMs: number | null;
   status: AgentStatus;
 }
 
-export function ChatView({ completedMessages, streamingText, status }: ChatViewProps) {
+const STREAMING_MESSAGE_ID = 'streaming-assistant-message';
+
+export function ChatView({
+  completedMessages,
+  streamingText,
+  streamingThoughtDurationMs,
+  status,
+}: ChatViewProps) {
   return (
     <Box flexDirection="column">
       {completedMessages.map((message) => (
         <Message key={message.id} msg={message} />
       ))}
 
-      {/* 流式输出中的文本 */}
       {(status === 'streaming' || status === 'thinking') && streamingText ? (
-        <Box paddingLeft={2} marginBottom={1}>
-          <Text color="white">{streamingText}</Text>
-        </Box>
+        <Message
+          msg={{
+            id: STREAMING_MESSAGE_ID,
+            role: 'assistant',
+            content: streamingText,
+            thoughtDurationMs: streamingThoughtDurationMs ?? undefined,
+          }}
+        />
       ) : null}
     </Box>
   );

@@ -1,32 +1,38 @@
 import { Box, Text } from 'ink';
 import type { UIMessage } from '../types.js';
+import { getMessagePresentation } from './message-presentation.js';
 
 interface MessageProps {
   msg: UIMessage;
 }
 
-const ROLE_COLORS: Record<UIMessage['role'], string> = {
-  user: 'cyan',
-  assistant: 'white',
-  system: 'grey',
-  tool: 'yellow',
-};
-
-const ROLE_LABELS: Record<UIMessage['role'], string> = {
-  user: 'You',
-  assistant: 'Agent',
-  system: 'System',
-  tool: 'Tool',
-};
+const MESSAGE_MARGIN_BOTTOM = 1;
+const THOUGHT_MARGIN_TOP = 1;
+const USER_HORIZONTAL_PADDING = 1;
+const THOUGHT_LABEL = 'Thought';
 
 export function Message({ msg }: MessageProps) {
-  const color = ROLE_COLORS[msg.role];
+  const presentation = getMessagePresentation(msg);
+  const thoughtSuffix = presentation.thoughtLabel?.slice(THOUGHT_LABEL.length);
 
   return (
-    <Box flexDirection="column" marginBottom={msg.role === 'user' ? 1 : 0}>
-      <Box>
-        <Text bold color={color}>
-          {ROLE_LABELS[msg.role]}
+    <Box flexDirection="column" marginBottom={MESSAGE_MARGIN_BOTTOM}>
+      {presentation.thoughtLabel && thoughtSuffix && (
+        <Box marginTop={THOUGHT_MARGIN_TOP}>
+          <Text backgroundColor="blue" color="white">
+            {THOUGHT_LABEL}
+          </Text>
+          <Text dimColor>{thoughtSuffix}</Text>
+        </Box>
+      )}
+      <Box
+        width="100%"
+        backgroundColor={presentation.backgroundColor}
+        paddingX={msg.role === 'user' ? USER_HORIZONTAL_PADDING : 0}
+      >
+        <Text color={presentation.color}>
+          {presentation.prefix}
+          {msg.content}
         </Text>
         {msg.toolCallNames && msg.toolCallNames.length > 0 && (
           <Text dimColor>
@@ -34,14 +40,7 @@ export function Message({ msg }: MessageProps) {
             [{msg.toolCallNames.join(', ')}]
           </Text>
         )}
-        <Text dimColor>:</Text>
       </Box>
-      {msg.content ? (
-        <Box paddingLeft={2}>
-          <Text color={color}>{msg.content}</Text>
-        </Box>
-      ) : null}
-      {msg.role !== 'user' && <Box marginBottom={1} />}
     </Box>
   );
 }

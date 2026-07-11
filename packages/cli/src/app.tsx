@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useApp, useStdout, Box, Text } from 'ink';
-import { getAppHeight } from './app-layout.js';
+import { CHAT_VIEW_LAYOUT, getAppHeight } from './app-layout.js';
 import { useAgent } from './hooks/useAgent.js';
 import { ChatView } from './components/ChatView.js';
 import { StatusBar } from './components/StatusBar.js';
@@ -59,20 +59,13 @@ export function App({ initialQuestion }: AppProps) {
           </Box>
         )}
 
-        <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden" justifyContent="flex-end">
-          {state.completedMessages.length > 0 && (
-            <ChatView
-              completedMessages={state.completedMessages}
-              streamingText={state.streamingText}
-              status={state.status}
-            />
-          )}
-
-          {state.completedMessages.length === 0 && state.streamingText && (
-            <Box paddingLeft={2} marginBottom={1}>
-              <Text color="white">{state.streamingText}</Text>
-            </Box>
-          )}
+        <Box {...CHAT_VIEW_LAYOUT}>
+          <ChatView
+            completedMessages={state.completedMessages}
+            streamingText={state.streamingText}
+            streamingThoughtDurationMs={state.streamingThoughtDurationMs}
+            status={state.status}
+          />
         </Box>
 
         {state.notice && (
