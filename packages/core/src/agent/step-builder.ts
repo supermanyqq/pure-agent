@@ -176,6 +176,14 @@ export class StepBuilder {
       request.maxTokens = options.maxTokens;
     }
 
+    if (options.thinking !== undefined) {
+      request.thinking = options.thinking;
+    }
+
+    if (options.reasoningEffort !== undefined) {
+      request.reasoningEffort = options.reasoningEffort;
+    }
+
     return request;
   }
 }

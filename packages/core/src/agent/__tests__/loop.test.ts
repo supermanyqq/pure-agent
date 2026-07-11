@@ -137,6 +137,36 @@ describe('AgentLoop', () => {
     });
   });
 
+  it('将思考选项转发到 Provider', async () => {
+    let receivedRequest: Parameters<ChatProvider['streamMessage']>[0] | undefined;
+    const provider: ChatProvider = {
+      streamMessage: async function* (params) {
+        receivedRequest = params;
+        yield { type: 'done', finishReason: 'stop' };
+      },
+    };
+    const loop = new AgentLoop(
+      provider,
+      createMockRegistry(),
+      createMockContextManager(),
+      events,
+    );
+
+    await loop.run(
+      makeMessagesWithUser('请充分思考'),
+      makeOptions({
+        thinking: { type: 'enabled' },
+        reasoningEffort: 'high',
+      }),
+      new AbortController().signal,
+    );
+
+    expect(receivedRequest).toMatchObject({
+      thinking: { type: 'enabled' },
+      reasoningEffort: 'high',
+    });
+  });
+
   // ===== tool_calls → 文本回复 =====
 
   it('单次 tool_calls 后文本回复', async () => {

@@ -308,6 +308,39 @@ describe('StepBuilder', () => {
     expect(request.model).toBe('deepseek-chat');
   });
 
+  it('将 thinking 和 reasoningEffort 放入 ChatRequest', async () => {
+    const cm = createMockContextManager();
+    const builder = new StepBuilder(cm);
+
+    const request = await builder.build(
+      [{ role: 'user', content: '思考后回答' }],
+      [],
+      createTestOptions({
+        thinking: { type: 'enabled' },
+        reasoningEffort: 'max',
+      }),
+      signal,
+    );
+
+    expect(request.thinking).toEqual({ type: 'enabled' });
+    expect(request.reasoningEffort).toBe('max');
+  });
+
+  it('未设置思考选项时不在 ChatRequest 中传递字段', async () => {
+    const cm = createMockContextManager();
+    const builder = new StepBuilder(cm);
+
+    const request = await builder.build(
+      [{ role: 'user', content: '直接回答' }],
+      [],
+      createTestOptions(),
+      signal,
+    );
+
+    expect(request).not.toHaveProperty('thinking');
+    expect(request).not.toHaveProperty('reasoningEffort');
+  });
+
   // ===== Prompt Caching =====
 
   it('连续两次 build 调用，tools 顺序应相同（排序稳定性）', async () => {

@@ -72,6 +72,8 @@ export interface AgentOptions {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  thinking?: { type: 'enabled' | 'disabled' };
+  reasoningEffort?: 'high' | 'max';
 }
 
 // ===== Turn 输出 =====
@@ -100,6 +102,8 @@ export interface ChatRequest {
   tools?: ToolDefinition[];
   temperature?: number;
   maxTokens?: number;
+  thinking?: { type: 'enabled' | 'disabled' };
+  reasoningEffort?: 'high' | 'max';
   stream: true;
 }
 

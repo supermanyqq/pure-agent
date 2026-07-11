@@ -245,6 +245,8 @@ export class AgentLoop {
         tools: chatRequest.tools,
         maxTokens: chatRequest.maxTokens,
         temperature: chatRequest.temperature,
+        thinking: chatRequest.thinking,
+        reasoningEffort: chatRequest.reasoningEffort,
         signal,
       });
 
