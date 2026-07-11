@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让 `pure-agent config` 能安全地保存 API Key，并让 Core 与 CLI 使用同一份可测试的配置文件契约。
+**Goal:** 让 `pure-agent config` 能安全地保存 API Key，并让 Core 与 CLI 使用同一份可测试的配置文件契约；交互式会话可复用该契约在启动后完成首次配置。
 
 **Architecture:** 配置文件解析、校验、权限、原子写入和脱敏全部留在 Core config 模块；CLI 只解析 `config` 子命令、读取输入流并渲染结果。写入 API Key 时保留 JSON 中不属于当前版本的字段，读取链路仍维持 environment 覆盖 file 的既有优先级。
 
@@ -28,7 +28,7 @@
 
 **Interfaces:**
 - Consumes: 当前 `ProviderConfig` 和 `~/.pure-agent/config.json` 的 `provider` 对象。
-- Produces: `ReasoningEffort`、`CliConfig`、`readStoredConfig()`、`saveApiKey()`、`redactApiKey()`。
+- Produces: `ReasoningEffort`、`CliConfig`、`readStoredConfig()`、`hasConfiguredApiKey()`、`saveApiKey()`、`redactApiKey()`。
 
 - [ ] **Step 1: 写 API Key 原子保存的失败测试**
 
@@ -165,6 +165,10 @@ Expected: PASS；原有的覆盖优先级和校验测试也必须继续通过。
 git add packages/core/src/config/types.ts packages/core/src/config/loader.ts packages/core/src/config/__tests__/loader.test.ts packages/core/src/index.ts
 git commit -m "feat(config): persist API keys securely"
 ```
+
+## 交互会话复用
+
+后续 CLI 会话阶段不会在启动时创建 Provider。它先调用 `hasConfiguredApiKey()` 得到 `configured` 或 `required` 状态：`required` 时仍渲染 Ink 输入栏，只允许 slash command；用户通过 `/config set api-key` 输入的密钥直接调用本阶段的 `saveApiKey()`。因此所有持久化、权限、原子替换与空值校验继续只有 Core 一处实现，而密钥不会出现在命令参数、输入历史或聊天记录中。
 
 ### Task 2: 增加顶层 `config` 子命令
 

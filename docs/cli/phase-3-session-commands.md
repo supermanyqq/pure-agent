@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在交互式多轮会话中提供 `/help`、`/new`、`/model` 和 `/effort`，并让切换设置只影响下一次请求。
+**Goal:** 在交互式多轮会话中提供 `/help`、`/new`、`/model`、`/effort` 和 `/config`，并让切换设置只影响下一次请求。
 
-**Architecture:** slash 解析器和 effort 映射是无 React、无 IO 的纯函数；`useAgent` 保存消息、状态和 `SessionSettings`，在每轮启动时从当前设置生成 `AgentOptions`。命令处理结果作为 notice 返回给 App，而不是伪造为 assistant message。
+**Architecture:** slash 解析器和 effort 映射是无 React、无 IO 的纯函数；`useAgent` 保存消息、状态、API Key 可用性和 `SessionSettings`，在每轮启动时从当前设置生成 `AgentOptions`。命令处理结果作为 notice 或配置输入意图返回给 App，而不是伪造为 assistant message。
 
 **Tech Stack:** TypeScript strict、React 19、Ink、Vitest。
 
@@ -66,7 +66,8 @@ export type SlashCommand =
   | { type: 'help' }
   | { type: 'new' }
   | { type: 'model'; model?: string }
-  | { type: 'effort'; effort?: ReasoningEffort };
+  | { type: 'effort'; effort?: ReasoningEffort }
+  | { type: 'config'; action: 'show' | 'set-api-key' };
 ```
 
 `SLASH_COMMANDS` 是用于菜单和帮助的一份数据源，每项包含 `name`、`usage`、`description`。`parseInput()` 对普通文本不改变内容，对 command 参数使用 `trim()`。
@@ -132,7 +133,7 @@ settings: SessionSettings;
 notice: string | null;
 ```
 
-初始化模型使用已加载的 `config.defaultModel`，effort 使用持久配置的有效默认值或 `DEFAULT_REASONING_EFFORT`。缺失 API Key 时仍显示默认设置和既有配置错误。
+初始化模型使用已加载的 `config.defaultModel`，effort 使用持久配置的有效默认值或 `DEFAULT_REASONING_EFFORT`。缺失 API Key 时仍显示默认设置和配置引导，而不是进入 `error`；普通消息在追加到 `messagesRef` 之前被拦截，`/config set api-key` 切换到掩码输入后调用 Core 的 `saveApiKey()`。
 
 - [ ] **Step 2: 将提交入口改为命令分发**
 
