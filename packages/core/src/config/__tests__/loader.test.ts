@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  hasConfiguredApiKey,
   loadCliConfig,
   loadProviderConfig,
   readStoredConfig,
@@ -149,5 +150,29 @@ describe('loadProviderConfig', () => {
     writeFileSync(configPath, JSON.stringify({ cli: { defaultEffort: 'high' } }));
 
     expect(loadCliConfig({ configPath })).toEqual({ defaultEffort: 'high' });
+  });
+
+  it('配置文件包含非空 API Key 时报告为已配置', () => {
+    writeFileSync(configPath, JSON.stringify({ provider: { apiKey: TEST_API_KEY } }));
+
+    withEnv('PURE_AGENT_API_KEY', undefined, () => {
+      expect(hasConfiguredApiKey({ configPath })).toBe(true);
+    });
+  });
+
+  it('环境变量 API Key 优先于空白文件配置', () => {
+    writeFileSync(configPath, JSON.stringify({ provider: { apiKey: '  ' } }));
+
+    withEnv('PURE_AGENT_API_KEY', TEST_API_KEY, () => {
+      expect(hasConfiguredApiKey({ configPath })).toBe(true);
+    });
+  });
+
+  it('没有有效 API Key 时报告为未配置', () => {
+    writeFileSync(configPath, JSON.stringify({ provider: { apiKey: '  ' } }));
+
+    withEnv('PURE_AGENT_API_KEY', undefined, () => {
+      expect(hasConfiguredApiKey({ configPath })).toBe(false);
+    });
   });
 });

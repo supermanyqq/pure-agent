@@ -49,6 +49,19 @@ export function readStoredConfig(options: ConfigFileOptions = {}): StoredConfig 
   }
 }
 
+/** Returns whether an API Key is available from the environment or persisted configuration. */
+export function hasConfiguredApiKey(options: ConfigFileOptions = {}): boolean {
+  if (process.env.PURE_AGENT_API_KEY?.trim()) return true;
+
+  try {
+    const storedConfig = readStoredConfig(options);
+    const provider = isRecord(storedConfig.provider) ? storedConfig.provider : {};
+    return typeof provider['apiKey'] === 'string' && provider['apiKey'].trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Saves an API Key without exposing it in command output or error messages. */
 export function saveApiKey(apiKey: string, options: ConfigFileOptions = {}): void {
   const normalizedApiKey = apiKey.trim();

@@ -62,6 +62,7 @@ export type {
 } from './config/types.js';
 export {
   getConfigFilePath,
+  hasConfiguredApiKey,
   loadCliConfig,
   loadProviderConfig,
   readStoredConfig,
