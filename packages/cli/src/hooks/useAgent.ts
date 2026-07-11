@@ -22,7 +22,7 @@ import type { SessionSettings } from '../session-settings.js';
 import { resolveSupportedModel } from '../runtime-options.js';
 import type { SupportedModel } from '../runtime-options.js';
 import { getNewTurnMessages } from '../turn-messages.js';
-import type { AgentState, ApiKeyStatus, UIMessage } from '../types.js';
+import type { AgentState, ApiKeyStatus, PickerState, UIMessage } from '../types.js';
 
 const INITIAL_MESSAGE_ID_COUNTER = 0;
 const DEFAULT_MAX_STEPS = 10;
@@ -64,6 +64,8 @@ export interface UseAgentReturn {
   reset: () => void;
   abort: () => void;
   cancelApiKeyEntry: () => void;
+  choosePickerValue: (value: string) => Promise<void>;
+  cancelPicker: () => void;
 }
 
 function createInitialSettings(options: UseAgentOptions): SessionSettings {
@@ -100,6 +102,7 @@ function createIdleState(
     settings,
     notice,
     apiKeyStatus,
+    picker: null,
   };
 }
 
@@ -360,6 +363,15 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         }));
         return;
       }
+      if (commandResult.kind === 'picker') {
+        const picker: PickerState = { kind: commandResult.picker };
+        setState((previous) => ({
+          ...previous,
+          notice: null,
+          picker,
+        }));
+        return;
+      }
       settingsRef.current = commandResult.settings;
       setState((previous) => ({
         ...previous,
@@ -390,5 +402,26 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
     }));
   }, [state.apiKeyStatus]);
 
-  return { state, submit, reset, abort, cancelApiKeyEntry };
+  const choosePickerValue = useCallback(async (value: string): Promise<void> => {
+    const picker = state.picker;
+    if (!picker) return;
+    setState((previous) => ({ ...previous, picker: null }));
+    const command = picker.kind === 'model' ? `/model ${value}` : `/effort ${value}`;
+    await submit(command);
+  }, [state.picker, submit]);
+
+  const cancelPicker = useCallback(() => {
+    if (!state.picker) return;
+    setState((previous) => ({ ...previous, picker: null }));
+  }, [state.picker]);
+
+  return {
+    state,
+    submit,
+    reset,
+    abort,
+    cancelApiKeyEntry,
+    choosePickerValue,
+    cancelPicker,
+  };
 }

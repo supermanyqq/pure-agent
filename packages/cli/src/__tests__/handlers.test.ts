@@ -17,11 +17,11 @@ describe('applySlashCommand', () => {
       });
   });
 
-  it('查询模型不会修改设置', () => {
+  it('无参数模型命令打开选择器而不修改设置', () => {
     expect(applySlashCommand({ type: 'model' }, INITIAL_SETTINGS)).toEqual({
-      kind: 'notice',
+      kind: 'picker',
+      picker: 'model',
       settings: INITIAL_SETTINGS,
-      message: 'Current model: deepseek-v4-pro.',
     });
   });
 
@@ -30,6 +30,14 @@ describe('applySlashCommand', () => {
       kind: 'notice',
       settings: { model: 'deepseek-v4-pro', effort: 'high' },
       message: 'Reasoning effort switched to high.',
+    });
+  });
+
+  it('无参数 effort 命令打开选择器而不修改设置', () => {
+    expect(applySlashCommand({ type: 'effort' }, INITIAL_SETTINGS)).toEqual({
+      kind: 'picker',
+      picker: 'effort',
+      settings: INITIAL_SETTINGS,
     });
   });
 

@@ -11,7 +11,14 @@ interface AppProps {
 
 export function App({ initialQuestion }: AppProps) {
   const { exit } = useApp();
-  const { state, submit, abort, cancelApiKeyEntry } = useAgent();
+  const {
+    state,
+    submit,
+    abort,
+    cancelApiKeyEntry,
+    choosePickerValue,
+    cancelPicker,
+  } = useAgent();
 
   // 命令行参数模式
   const hasSentRef = useRef(false);
@@ -90,8 +97,14 @@ export function App({ initialQuestion }: AppProps) {
         }}
         onAbort={abort}
         onCancelApiKeyEntry={cancelApiKeyEntry}
+        onChoosePickerValue={(value) => {
+          void choosePickerValue(value);
+        }}
+        onCancelPicker={cancelPicker}
         status={state.status}
         mode={state.apiKeyStatus === 'entering' ? 'api-key' : 'chat'}
+        picker={state.picker}
+        settings={state.settings}
       />
     </Box>
   );

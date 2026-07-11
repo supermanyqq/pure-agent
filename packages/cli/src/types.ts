@@ -21,6 +21,12 @@ export type AgentStatus =
 
 export type ApiKeyStatus = 'configured' | 'required' | 'entering';
 
+export type PickerKind = 'model' | 'effort';
+
+export interface PickerState {
+  kind: PickerKind;
+}
+
 /** useAgent hook 返回的状态 */
 export interface AgentState {
   status: AgentStatus;
@@ -34,4 +40,5 @@ export interface AgentState {
   settings: SessionSettings;
   notice: string | null;
   apiKeyStatus: ApiKeyStatus;
+  picker: PickerState | null;
 }
