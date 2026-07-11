@@ -7,20 +7,25 @@ import { CommandMenu } from './CommandMenu.js';
 interface InputBarProps {
   onSubmit: (text: string) => void;
   onAbort: () => void;
+  onCancelApiKeyEntry: () => void;
   status: AgentStatus;
+  mode: 'chat' | 'api-key';
 }
 
-export function InputBar({ onSubmit, onAbort, status }: InputBarProps) {
+export function InputBar({ onSubmit, onAbort, onCancelApiKeyEntry, status, mode }: InputBarProps) {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
-  const disabled = status !== 'idle';
+  const disabled = status === 'thinking' || status === 'streaming' || status === 'executing';
+  const isApiKeyEntry = mode === 'api-key';
 
   const handleSubmit = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
-    setHistory((prev) => [...prev, trimmed]);
-    setHistoryIdx(-1);
+    if (!isApiKeyEntry) {
+      setHistory((prev) => [...prev, trimmed]);
+      setHistoryIdx(-1);
+    }
     setInput('');
     onSubmit(trimmed);
   };
@@ -35,6 +40,14 @@ export function InputBar({ onSubmit, onAbort, status }: InputBarProps) {
         }
         return;
       }
+
+      if (isApiKeyEntry && key.ctrl && inputStr === 'c') {
+        setInput('');
+        onCancelApiKeyEntry();
+        return;
+      }
+
+      if (isApiKeyEntry) return;
 
       if (key.upArrow) {
         const newIdx = historyIdx < history.length - 1 ? historyIdx + 1 : historyIdx;
@@ -70,16 +83,17 @@ export function InputBar({ onSubmit, onAbort, status }: InputBarProps) {
 
   return (
     <Box marginTop={1} flexDirection="column">
-      <CommandMenu input={input} />
+      {!isApiKeyEntry && <CommandMenu input={input} />}
       <Box flexDirection="row">
         <Text color="cyan" bold>
-          &gt;{' '}
+          {isApiKeyEntry ? 'API key (hidden) > ' : '> '}
         </Text>
         <TextInput
           value={input}
           onChange={setInput}
           onSubmit={handleSubmit}
-          placeholder="Type a message or / for commands…"
+          placeholder={isApiKeyEntry ? 'Paste API key and press Enter…' : 'Type a message or / for commands…'}
+          mask={isApiKeyEntry ? '*' : undefined}
         />
       </Box>
     </Box>

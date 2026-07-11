@@ -19,6 +19,8 @@ export type AgentStatus =
   | 'executing'
   | 'error';
 
+export type ApiKeyStatus = 'configured' | 'required' | 'entering';
+
 /** useAgent hook 返回的状态 */
 export interface AgentState {
   status: AgentStatus;
@@ -31,4 +33,5 @@ export interface AgentState {
   lastFinishReason: FinishReason | null;
   settings: SessionSettings;
   notice: string | null;
+  apiKeyStatus: ApiKeyStatus;
 }

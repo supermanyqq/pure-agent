@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { AgentEventMap, AgentOptions, FinishReason, Message } from '@pure-agent/core';
 import {
   AgentLoop,
@@ -7,8 +7,10 @@ import {
   createEmptyToolRegistry,
   DEFAULT_SYSTEM_PROMPT,
   formatSystemPrompt,
+  hasConfiguredApiKey,
   loadCliConfig,
   loadProviderConfig,
+  saveApiKey,
 } from '@pure-agent/core';
 import { applySlashCommand } from '../commands/handlers.js';
 import { parseInput } from '../commands/parser.js';
@@ -18,13 +20,18 @@ import {
 } from '../session-settings.js';
 import type { SessionSettings } from '../session-settings.js';
 import { getNewTurnMessages } from '../turn-messages.js';
-import type { AgentState, UIMessage } from '../types.js';
+import type { AgentState, ApiKeyStatus, UIMessage } from '../types.js';
 
 const INITIAL_MESSAGE_ID_COUNTER = 0;
 const DEFAULT_MODEL = 'deepseek-v4-pro';
 const DEFAULT_MAX_STEPS = 10;
 const DEFAULT_MAX_TOKENS = 4_096;
 const DEFAULT_TEMPERATURE = 0;
+const API_KEY_REQUIRED_NOTICE = 'API key is not configured. Run /config set api-key.';
+const API_KEY_CONFIGURED_NOTICE = 'API key is configured. Use /config set api-key to replace it.';
+const API_KEY_CONFIGURATION_CANCELLED_NOTICE = 'API key configuration cancelled.';
+const API_KEY_SAVED_NOTICE = 'API key saved. You can start chatting.';
+const API_KEY_SAVE_FAILED_NOTICE = 'Unable to save the API key. Check the configuration file and try again.';
 
 let messageIdCounter = INITIAL_MESSAGE_ID_COUNTER;
 
@@ -55,6 +62,7 @@ export interface UseAgentReturn {
   submit: (input: string) => Promise<void>;
   reset: () => void;
   abort: () => void;
+  cancelApiKeyEntry: () => void;
 }
 
 function createInitialSettings(options: UseAgentOptions): SessionSettings {
@@ -70,7 +78,15 @@ function createInitialSettings(options: UseAgentOptions): SessionSettings {
   }
 }
 
-function createIdleState(settings: SessionSettings, notice: string | null): AgentState {
+function getApiKeyStatus(): ApiKeyStatus {
+  return hasConfiguredApiKey() ? 'configured' : 'required';
+}
+
+function createIdleState(
+  settings: SessionSettings,
+  notice: string | null,
+  apiKeyStatus: ApiKeyStatus = getApiKeyStatus(),
+): AgentState {
   return {
     status: 'idle',
     streamingText: '',
@@ -82,6 +98,7 @@ function createIdleState(settings: SessionSettings, notice: string | null): Agen
     lastFinishReason: null,
     settings,
     notice,
+    apiKeyStatus,
   };
 }
 
@@ -203,6 +220,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   }, []);
 
   const sendMessage = useCallback(async (userInput: string): Promise<void> => {
+    if (!hasConfiguredApiKey()) {
+      setState((previous) => ({
+        ...previous,
+        status: 'idle',
+        lastError: null,
+        notice: API_KEY_REQUIRED_NOTICE,
+        apiKeyStatus: 'required',
+      }));
+      return;
+    }
+
     const agent = getAgent();
     if (!agent) {
       setState((previous) => ({
@@ -274,6 +302,29 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   }, [getAgent, options.maxSteps, options.maxTokens, options.systemPrompt, options.temperature]);
 
   const submit = useCallback(async (input: string): Promise<void> => {
+    if (state.apiKeyStatus === 'entering') {
+      try {
+        saveApiKey(input);
+        agentRef.current = null;
+        initErrorRef.current = null;
+        setState((previous) => ({
+          ...previous,
+          status: 'idle',
+          lastError: null,
+          notice: API_KEY_SAVED_NOTICE,
+          apiKeyStatus: 'configured',
+        }));
+      } catch {
+        setState((previous) => ({
+          ...previous,
+          status: 'idle',
+          notice: API_KEY_SAVE_FAILED_NOTICE,
+          apiKeyStatus: 'required',
+        }));
+      }
+      return;
+    }
+
     const parsedInput = parseInput(input);
     if (parsedInput.kind === 'invalid-command') {
       setState((previous) => ({ ...previous, notice: parsedInput.message }));
@@ -285,6 +336,29 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         resetConversation(commandResult.settings, commandResult.message);
         return;
       }
+      if (commandResult.kind === 'config') {
+        if (commandResult.action === 'set-api-key') {
+          setState((previous) => ({
+            ...previous,
+            status: 'idle',
+            lastError: null,
+            notice: null,
+            apiKeyStatus: 'entering',
+          }));
+          return;
+        }
+        const apiKeyStatus = getApiKeyStatus();
+        setState((previous) => ({
+          ...previous,
+          status: 'idle',
+          lastError: null,
+          notice: apiKeyStatus === 'configured'
+            ? API_KEY_CONFIGURED_NOTICE
+            : API_KEY_REQUIRED_NOTICE,
+          apiKeyStatus,
+        }));
+        return;
+      }
       settingsRef.current = commandResult.settings;
       setState((previous) => ({
         ...previous,
@@ -294,7 +368,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
       return;
     }
     await sendMessage(parsedInput.content);
-  }, [resetConversation, sendMessage]);
+  }, [resetConversation, sendMessage, state.apiKeyStatus]);
 
   const reset = useCallback(() => {
     resetConversation(settingsRef.current, null);
@@ -304,16 +378,16 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
     abortRef.current?.abort();
   }, []);
 
-  useEffect(() => {
-    const agent = getAgent();
-    if (!agent && initErrorRef.current) {
-      setState((previous) => ({
-        ...previous,
-        status: 'error',
-        lastError: initErrorRef.current,
-      }));
-    }
-  }, [getAgent]);
+  const cancelApiKeyEntry = useCallback(() => {
+    if (state.apiKeyStatus !== 'entering') return;
+    const apiKeyStatus = getApiKeyStatus();
+    setState((previous) => ({
+      ...previous,
+      status: 'idle',
+      notice: API_KEY_CONFIGURATION_CANCELLED_NOTICE,
+      apiKeyStatus,
+    }));
+  }, [state.apiKeyStatus]);
 
-  return { state, submit, reset, abort };
+  return { state, submit, reset, abort, cancelApiKeyEntry };
 }

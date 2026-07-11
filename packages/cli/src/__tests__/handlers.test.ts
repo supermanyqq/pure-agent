@@ -44,6 +44,7 @@ describe('applySlashCommand', () => {
     const result = applySlashCommand({ type: 'help' }, INITIAL_SETTINGS);
 
     expect(result.kind).toBe('notice');
+    if (result.kind !== 'notice') throw new Error('Expected a notice result');
     expect(result.settings).toEqual(INITIAL_SETTINGS);
     expect(result.message).toContain('/model');
     expect(result.message).toContain('/effort');

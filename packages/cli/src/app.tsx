@@ -11,7 +11,7 @@ interface AppProps {
 
 export function App({ initialQuestion }: AppProps) {
   const { exit } = useApp();
-  const { state, submit, abort } = useAgent();
+  const { state, submit, abort, cancelApiKeyEntry } = useAgent();
 
   // 命令行参数模式
   const hasSentRef = useRef(false);
@@ -34,18 +34,17 @@ export function App({ initialQuestion }: AppProps) {
         <Text dimColor> — AI Chat (Ctrl+C to cancel, / for commands)</Text>
       </Box>
 
-      {/* 启动时的配置错误 */}
-      {state.status === 'error' && state.lastError && state.completedMessages.length === 0 && (
+      {state.apiKeyStatus === 'required' && (
         <Box flexDirection="column" marginY={1}>
-          <Text bold color="red">
-            Configuration Error
+          <Text bold color="yellow">
+            API Key Required
           </Text>
           <Box paddingLeft={2}>
-            <Text color="red">{state.lastError}</Text>
+            <Text>Run /config set api-key to configure it securely.</Text>
           </Box>
           <Box marginTop={1}>
             <Text dimColor>
-              Set PURE_AGENT_API_KEY environment variable or configure ~/.pure-agent/config.json
+              Chat is unavailable until an API key is configured. Use /config for help.
             </Text>
           </Box>
         </Box>
@@ -90,7 +89,9 @@ export function App({ initialQuestion }: AppProps) {
           submit(text);
         }}
         onAbort={abort}
+        onCancelApiKeyEntry={cancelApiKeyEntry}
         status={state.status}
+        mode={state.apiKeyStatus === 'entering' ? 'api-key' : 'chat'}
       />
     </Box>
   );
