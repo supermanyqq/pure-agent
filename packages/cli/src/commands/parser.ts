@@ -9,6 +9,9 @@ const HELP_COMMAND = '/help';
 const NEW_COMMAND = '/new';
 const MODEL_COMMAND = '/model';
 const EFFORT_COMMAND = '/effort';
+const CONFIG_COMMAND = '/config';
+const CONFIG_SET_COMMAND = 'set';
+const API_KEY_SETTING = 'api-key';
 const EFFORT_VALUES = 'off, low, medium, high';
 
 export interface SlashCommandDefinition {
@@ -26,13 +29,19 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
     usage: `${EFFORT_COMMAND} <off|low|medium|high>`,
     description: 'Show or switch reasoning effort.',
   },
+  {
+    name: CONFIG_COMMAND,
+    usage: `${CONFIG_COMMAND} [set api-key]`,
+    description: 'Show configuration or securely set an API key.',
+  },
 ];
 
 export type SlashCommand =
   | { type: 'help' }
   | { type: 'new' }
   | { type: 'model'; model?: string }
-  | { type: 'effort'; effort?: ReasoningEffort };
+  | { type: 'effort'; effort?: ReasoningEffort }
+  | { type: 'config'; action: 'show' | 'set-api-key' };
 
 export type ParsedInput =
   | { kind: 'message'; content: string }
@@ -51,6 +60,7 @@ export function parseInput(input: string): ParsedInput {
   if (name === NEW_COMMAND) return parseArgumentFreeCommand(args, { type: 'new' });
   if (name === MODEL_COMMAND) return parseModelCommand(args);
   if (name === EFFORT_COMMAND) return parseEffortCommand(args);
+  if (name === CONFIG_COMMAND) return parseConfigCommand(args);
   return { kind: 'invalid-command', message: `Unknown command: ${name}` };
 }
 
@@ -85,6 +95,20 @@ function parseEffortCommand(args: string[]): ParsedInput {
     return { kind: 'invalid-command', message: `Effort must be one of: ${EFFORT_VALUES}.` };
   }
   return { kind: 'command', command: { type: 'effort', effort } };
+}
+
+function parseConfigCommand(args: string[]): ParsedInput {
+  if (args.length === EMPTY_ARGUMENT_COUNT) {
+    return { kind: 'command', command: { type: 'config', action: 'show' } };
+  }
+  if (
+    args.length === SINGLE_ARGUMENT_COUNT + SINGLE_ARGUMENT_COUNT &&
+    args[FIRST_ARGUMENT_INDEX] === CONFIG_SET_COMMAND &&
+    args[SINGLE_ARGUMENT_COUNT] === API_KEY_SETTING
+  ) {
+    return { kind: 'command', command: { type: 'config', action: 'set-api-key' } };
+  }
+  return { kind: 'invalid-command', message: `Usage: ${CONFIG_COMMAND} set ${API_KEY_SETTING}` };
 }
 
 function isReasoningEffort(value: string): value is ReasoningEffort {

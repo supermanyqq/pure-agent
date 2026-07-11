@@ -32,6 +32,21 @@ describe('parseInput', () => {
     expect(parseInput('/new')).toEqual({ kind: 'command', command: { type: 'new' } });
   });
 
+  it('解析交互式配置命令但不接受密钥参数', () => {
+    expect(parseInput('/config')).toEqual({
+      kind: 'command',
+      command: { type: 'config', action: 'show' },
+    });
+    expect(parseInput('/config set api-key')).toEqual({
+      kind: 'command',
+      command: { type: 'config', action: 'set-api-key' },
+    });
+    expect(parseInput('/config set api-key sk-secret')).toEqual({
+      kind: 'invalid-command',
+      message: 'Usage: /config set api-key',
+    });
+  });
+
   it('拒绝非法 effort 和未知命令', () => {
     expect(parseInput('/effort extreme')).toEqual({
       kind: 'invalid-command',

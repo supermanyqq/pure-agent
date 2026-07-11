@@ -7,7 +7,8 @@ const HELP_SEPARATOR = ' — ';
 
 export type SlashCommandResult =
   | { kind: 'notice'; settings: SessionSettings; message: string }
-  | { kind: 'reset'; settings: SessionSettings; message: string };
+  | { kind: 'reset'; settings: SessionSettings; message: string }
+  | { kind: 'config'; settings: SessionSettings; action: 'show' | 'set-api-key' };
 
 /** Applies a parsed command without mutating the active session. */
 export function applySlashCommand(
@@ -53,5 +54,7 @@ export function applySlashCommand(
             settings,
             message: `Current reasoning effort: ${settings.effort}.`,
           };
+    case 'config':
+      return { kind: 'config', settings, action: command.action };
   }
 }

@@ -47,5 +47,19 @@ describe('applySlashCommand', () => {
     expect(result.settings).toEqual(INITIAL_SETTINGS);
     expect(result.message).toContain('/model');
     expect(result.message).toContain('/effort');
+    expect(result.message).toContain('/config');
+  });
+
+  it('配置命令返回 UI 配置意图而不修改设置', () => {
+    expect(applySlashCommand({ type: 'config', action: 'show' }, INITIAL_SETTINGS)).toEqual({
+      kind: 'config',
+      action: 'show',
+      settings: INITIAL_SETTINGS,
+    });
+    expect(applySlashCommand({ type: 'config', action: 'set-api-key' }, INITIAL_SETTINGS)).toEqual({
+      kind: 'config',
+      action: 'set-api-key',
+      settings: INITIAL_SETTINGS,
+    });
   });
 });
