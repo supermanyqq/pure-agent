@@ -141,7 +141,7 @@ Provider 层不负责裁剪消息——这是 Context Management 层的职责。
 
 ### 8. 模型适配
 
-当前使用 DeepSeek v4 系列（`deepseek-v4-pro` / `deepseek-v4-flash`）。Provider 层在构建请求体时将 `SendMessageParams.thinking` 原样映射到 API 的 `thinking` 字段，支持思考模式开关。
+当前使用 DeepSeek v4 系列（`deepseek-v4-pro` / `deepseek-v4-flash`）。Provider 层在构建请求体时将 `SendMessageParams.thinking` 原样映射到 API 的 `thinking` 字段，并将可选的 `reasoningEffort` 映射为顶层 `reasoning_effort`。CLI 的 `off|low|medium|high` 设置在进入 Provider 前已收敛为这两个协议字段，因此 Provider 不感知终端 UI 状态。
 
 > ⚠️ `deepseek-chat` 和 `deepseek-reasoner` 将于 2026/07/24 弃用，新项目只用两个 v4 模型名。
 
