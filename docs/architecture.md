@@ -22,8 +22,8 @@
 | CLI 参数解析 | commander | 轻量，社区标准 |
 | CLI 流式 Markdown | [streammark](https://www.npmjs.com/package/streammark) | 零依赖，专为 LLM 流式输出设计，自动缓冲未闭合语法 |
 | 桌面框架 | Electron | 成熟稳定，生态最好 |
-| 桌面构建 | Vite | 快，HMR 开箱即用 |
-| 桌面 UI | React + Ant Design + Tailwind CSS | React 组件化 + 成熟设计系统 + 原子化样式 |
+| 桌面构建 | electron-vite | 统一 main、preload 和 React Renderer 的构建与开发热更新 |
+| 桌面 UI | React + CSS Custom Properties | 定制化的会话工作台，不把通用组件库的默认视觉带入主界面 |
 | 桌面流式 Markdown | [streamdown](https://github.com/vercel/streamdown) | 处理 AI 逐 token 输出时的未闭合 Markdown，drop-in 替代 react-markdown |
 
 ### 两端流式 Markdown 方案说明
@@ -117,7 +117,7 @@ pure-agent/
 │       └── src/
 │           ├── main/            # Electron 主进程（运行 core）
 │           ├── preload/         # Context bridge（安全 IPC）
-│           ├── renderer/        # React 渲染进程（Vite + Antd + Tailwind）
+│           ├── renderer/        # React 渲染进程（electron-vite + 定制 CSS）
 │           └── shared/          # IPC 通道常量
 │
 ├── package.json                 # workspace root
@@ -371,10 +371,8 @@ printf '%s' "$KEY" | pure-agent config set api-key --stdin
 | 依赖 | 用途 |
 |---|---|
 | `electron` | 桌面壳 |
+| `electron-vite` | main、preload 与 renderer 的统一构建 / HMR |
 | `react` + `react-dom` | UI 框架 |
-| `antd` | 组件库（布局、表单、设置面板等） |
-| `vite` | 构建工具 |
-| `tailwindcss` | 原子化样式 |
 | `streamdown` + `@streamdown/code` | 流式 Markdown 渲染 + 代码高亮 |
 | `@pure-agent/core` | Agent 引擎（在主进程中运行） |
 
@@ -383,9 +381,9 @@ printf '%s' "$KEY" | pure-agent config set api-key --stdin
 ```
 Main Process                         Renderer Process
 ─────────────                        ────────────────
-@pure-agent/core                    React App (Vite HMR)
-  Provider / Agent / Tools            ├─ Ant Design (Layout, Form, Modal)
-  ↓                                   ├─ Tailwind CSS (原子化样式)
+@pure-agent/core                    React App (electron-vite HMR)
+  Provider / Agent / Tools            ├─ 定制会话布局 + CSS tokens
+  ↓                                   ├─ Streamdown code plugin
 IPC Handlers                          ├─ streamdown (流式 Markdown)
   ↓                                   └─ 订阅事件 → 逐 token 更新 UI
 contextBridge ◄──────────────────── window.electronAPI
@@ -398,14 +396,10 @@ contextBridge ◄──────────────────── wi
 
 | 组件 | 功能 | 使用的库 |
 |---|---|---|
-| `Sidebar` | 会话列表、新建会话 | `Menu`, `Button` |
-| `ChatView` | 聊天消息流 | `Layout` |
-| `MessageBubble` | 消息气泡，assistant 用 `<Streamdown>` 渲染 | `Card`, `streamdown` |
-| `ToolCallCard` | 工具调用卡片（可展开查看参数/结果） | `Collapse`, `Tag`, `Spin` |
-| `ThinkingDot` | 思考中跳动圆点 | CSS animation |
-| `InputBox` | 输入 + 发送 + 停止 | `Input.TextArea`, `Button` |
-| `Header` | 当前模型 / 会话标题 | `Layout.Header` |
-| `SettingsModal` | API Key、模型选择等 | `Modal`, `Form`, `Select` |
+| `Sidebar` | 会话列表、新建会话、当前会话信号线 | React + 定制 CSS |
+| `ChatView` | 当前会话、空状态和历史消息恢复 | React + 定制 CSS |
+| `MessageBubble` | 用户纯文本与助手 `<Streamdown>` 渲染 | streamdown + `@streamdown/code` |
+| `Composer` | 输入、Enter 发送、Shift+Enter 换行、停止 | 原生 `textarea` + React |
 
 ---
 

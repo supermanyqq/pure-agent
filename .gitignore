@@ -34,5 +34,8 @@ logs/
 out/
 release/
 
+open-source/
 hermes-agent/
+kilocode-main/
+cline-main/
 .worktrees/
