@@ -13,12 +13,13 @@ interface ChatViewProps {
 export function ChatView({ session }: ChatViewProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const latestContent = session?.streamingMessage?.content;
+  const latestReasoning = session?.streamingMessage?.reasoningContent;
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
     scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }, [latestContent, session?.messages.length]);
+  }, [latestContent, latestReasoning, session?.messages.length]);
 
   if (!session) {
     return <section className="chat-view" aria-label="当前会话" />;
@@ -29,6 +30,7 @@ export function ChatView({ session }: ChatViewProps) {
       id: session.streamingMessage.id,
       role: MESSAGE_ROLE,
       content: session.streamingMessage.content,
+      reasoningContent: session.streamingMessage.reasoningContent,
       createdAt: session.updatedAt,
     }
     : null;

@@ -72,6 +72,7 @@ export {
 
 // Tools
 export { createEmptyToolRegistry } from './tools/empty-registry.js';
+export { createDefaultToolRegistry, createWebFetchTool, createWebSearchTool, createReadFileTool, createWriteFileTool, createEditFileTool, createShellExecTool, createGlobTool, createGrepTool } from './tools/index.js';
 
 // Events
 export { createConsoleEmitter } from './events/emitter.js';

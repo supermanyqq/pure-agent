@@ -8,6 +8,8 @@ export interface UIMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   thoughtDurationMs?: number;
+  /** 思考过程文本（DeepSeek R1 / Claude thinking） */
+  reasoningContent?: string;
   /** 如果是工具调用，展示工具名 */
   toolCallNames?: string[];
 }
@@ -32,6 +34,7 @@ export interface PickerState {
 export interface AgentState {
   status: AgentStatus;
   streamingText: string;
+  streamingReasoning: string;
   streamingThoughtDurationMs: number | null;
   toolCallNames: string[];
   completedMessages: UIMessage[];

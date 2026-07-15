@@ -25,6 +25,7 @@ const ABORTED_SESSION_NOTICE = '回复已停止。';
 
 export interface AgentRunCallbacks {
   onDelta(content: string): void;
+  onReasoning?(content: string): void;
   onComplete(messages: Message[]): void;
   onError(error: Error): void;
   onAborted(): void;
@@ -151,6 +152,17 @@ export class SessionManager {
         record.snapshot.updatedAt = this.now();
         this.notify(record.snapshot);
       },
+      onReasoning: (content) => {
+        if (!this.isCurrentRun(record, abortController) || !content) return;
+        const streamingMessage = record.snapshot.streamingMessage ?? this.createStreamingMessage();
+        streamingMessage.reasoningContent = (streamingMessage.reasoningContent ?? '') + content;
+        record.snapshot.streamingMessage = streamingMessage;
+        if (record.snapshot.status === 'idle') {
+          record.snapshot.status = 'thinking';
+        }
+        record.snapshot.updatedAt = this.now();
+        this.notify(record.snapshot);
+      },
       onComplete: (messages) => {
         if (!this.isCurrentRun(record, abortController)) return;
         const newCoreMessages = messages.slice(record.completedCoreMessageCount);
@@ -241,7 +253,14 @@ function toChatMessages(
       return [{ id: createId(), role: 'user' as const, content: message.content, createdAt: Date.now() }];
     }
     if (message.role === 'assistant' && typeof message.content === 'string' && message.content) {
-      return [{ id: createId(), role: 'assistant' as const, content: message.content, createdAt: Date.now() }];
+      const reasoningContent = 'reasoningContent' in message ? (message as { reasoningContent?: string }).reasoningContent : undefined;
+      return [{
+        id: createId(),
+        role: 'assistant' as const,
+        content: message.content,
+        reasoningContent,
+        createdAt: Date.now(),
+      }];
     }
     return [];
   });

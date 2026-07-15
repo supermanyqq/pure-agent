@@ -9,6 +9,7 @@ import type { Message, TurnOutput } from '@pure-agent/core';
 import {
   createDeepSeekClient,
   createEmptyToolRegistry,
+  createDefaultToolRegistry,
   createContextManager,
   createConsoleEmitter,
   AgentLoop,
@@ -22,7 +23,7 @@ import { toReasoningOptions } from './session-settings.js';
 const config = loadProviderConfig();
 const cliConfig = loadCliConfig();
 const provider = createDeepSeekClient(config);
-const toolRegistry = createEmptyToolRegistry();
+const toolRegistry = createDefaultToolRegistry(process.cwd());
 const contextManager = createContextManager();
 const events = createConsoleEmitter();
 

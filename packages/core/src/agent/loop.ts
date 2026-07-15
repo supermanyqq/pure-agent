@@ -124,11 +124,12 @@ export class AgentLoop {
 
         // ===== 阶段 C：判断 finish_reason =====
 
-        // C1: 正常结束 → 保存文本回复
+        // C1: 正常结束 → 保存文本回复（含 reasoning）
         if (finishReason === 'stop') {
           messages.push({
             role: 'assistant',
             content: textContent,
+            reasoningContent: reasoningContent || undefined,
           });
           this.emit('agent:response', { content: textContent });
           return this.finish(messages, steps, 'completed', { finishReason });
@@ -259,7 +260,7 @@ export class AgentLoop {
         switch (event.type) {
           case 'reasoning':
             reasoningContent += event.content;
-            // 不发射 agent:stream:delta — reasoning 不展示给用户
+            this.emit('agent:reasoning:delta', { content: event.content });
             break;
 
           case 'text':

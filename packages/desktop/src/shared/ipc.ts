@@ -10,18 +10,20 @@ export const IPC_CHANNELS = {
 
 export type ConversationRole = 'user' | 'assistant';
 
-export type SessionStatus = 'idle' | 'thinking' | 'streaming' | 'error';
+export type SessionStatus = 'idle' | 'thinking' | 'reasoning' | 'streaming' | 'error';
 
 export interface ChatMessage {
   id: string;
   role: ConversationRole;
   content: string;
+  reasoningContent?: string;
   createdAt: number;
 }
 
 export interface StreamingMessage {
   id: string;
   content: string;
+  reasoningContent?: string;
 }
 
 export interface SessionSnapshot {

@@ -2,7 +2,7 @@ import {
   AgentLoop,
   createContextManager,
   createDeepSeekClient,
-  createEmptyToolRegistry,
+  createDefaultToolRegistry,
   DEFAULT_SYSTEM_PROMPT,
   formatSystemPrompt,
   loadProviderConfig,
@@ -80,6 +80,9 @@ export class CoreAgentRuntime implements AgentRuntime {
           case 'agent:stream:delta':
             callbacks.onDelta((payload as AgentEventMap['agent:stream:delta']).content);
             return;
+          case 'agent:reasoning:delta':
+            callbacks.onReasoning?.((payload as AgentEventMap['agent:reasoning:delta']).content);
+            return;
           case 'agent:error':
             callbacks.onError((payload as AgentEventMap['agent:error']).error);
             return;
@@ -113,7 +116,7 @@ function createDefaultSessionAgent(_sessionId: string, events: AgentEventEmitter
   return {
     loop: new AgentLoop(
       provider,
-      createEmptyToolRegistry(),
+      createDefaultToolRegistry(process.cwd()),
       createContextManager(),
       events,
     ),

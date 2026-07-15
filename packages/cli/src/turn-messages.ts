@@ -3,6 +3,7 @@ import type { Message } from '@pure-agent/core';
 export interface NewTurnMessage {
   message: Message;
   thoughtDurationMs?: number;
+  reasoningContent?: string;
 }
 
 const FIRST_DURATION_INDEX = 0;
@@ -20,6 +21,7 @@ export function getNewTurnMessages(
 
     const thoughtDurationMs = thoughtDurationsMs[durationIndex];
     durationIndex += NEXT_DURATION_INDEX;
-    return thoughtDurationMs === undefined ? { message } : { message, thoughtDurationMs };
+    const reasoningContent = 'reasoningContent' in message ? (message as { reasoningContent?: string }).reasoningContent : undefined;
+    return { message, thoughtDurationMs, reasoningContent };
   });
 }

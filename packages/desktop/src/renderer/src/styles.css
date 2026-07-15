@@ -210,9 +210,9 @@ textarea:focus-visible {
 .message-stack {
   display: flex;
   flex-direction: column;
-  width: min(100%, 880px);
+  width: min(calc(100% - 56px), 880px);
   margin: 0 auto;
-  padding: 42px clamp(28px, 6vw, 96px) 38px;
+  padding: 42px 0 38px;
   gap: 22px;
 }
 
@@ -397,6 +397,70 @@ textarea:focus-visible {
 
   .composer-hint {
     display: none;
+  }
+}
+
+/* ===== Thinking / Reasoning Block ===== */
+
+.thinking-block {
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: #999;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.thinking-toggle:hover {
+  color: #666;
+}
+
+.thinking-chevron {
+  font-size: 10px;
+  flex-shrink: 0;
+  color: #bbb;
+  margin-left: 8px;
+}
+
+.thinking-content {
+  padding: 4px 0 8px 0;
+}
+
+.thinking-content p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #999;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.thinking-truncated {
+  margin-top: 4px !important;
+  color: #bbb !important;
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  .thinking-toggle {
+    color: #777;
+  }
+  .thinking-toggle:hover {
+    color: #aaa;
+  }
+  .thinking-content p {
+    color: #777;
   }
 }
 

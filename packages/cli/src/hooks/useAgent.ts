@@ -5,7 +5,7 @@ import {
   AgentLoop,
   createContextManager,
   createDeepSeekClient,
-  createEmptyToolRegistry,
+  createDefaultToolRegistry,
   DEFAULT_SYSTEM_PROMPT,
   formatSystemPrompt,
   hasConfiguredApiKey,
@@ -48,17 +48,23 @@ function nextId(): string {
   return `msg-${messageIdCounter}`;
 }
 
-function messageToUI(message: Message, thoughtDurationMs?: number): UIMessage {
+function messageToUI(message: Message, thoughtDurationMs?: number, reasoningContent?: string): UIMessage {
   const content = typeof message.content === 'string' ? message.content : '';
   const toolCallNames =
     message.role === 'assistant' && 'toolCalls' in message && message.toolCalls
       ? message.toolCalls.map((toolCall) => toolCall.function.name)
       : undefined;
+  const msgReasoning = reasoningContent ?? (
+    message.role === 'assistant' && 'reasoningContent' in message
+      ? (message as { reasoningContent?: string }).reasoningContent
+      : undefined
+  );
   return {
     id: nextId(),
     role: message.role,
     content,
     thoughtDurationMs,
+    reasoningContent: msgReasoning,
     toolCallNames,
   };
 }
@@ -106,6 +112,7 @@ function createIdleState(
   return {
     status: 'idle',
     streamingText: '',
+    streamingReasoning: '',
     streamingThoughtDurationMs: null,
     toolCallNames: [],
     completedMessages: [],
@@ -145,7 +152,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
       try {
         const config = loadProviderConfig();
         const provider = createDeepSeekClient(config);
-        const toolRegistry = createEmptyToolRegistry();
+        const toolRegistry = createDefaultToolRegistry(process.cwd());
         const contextManager = createContextManager();
         const emitter = {
           emit: <K extends keyof AgentEventMap>(type: K, payload: AgentEventMap[K]): void => {
@@ -173,10 +180,20 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                   ...previous,
                   status: 'thinking',
                   streamingText: '',
+                  streamingReasoning: '',
                   streamingThoughtDurationMs: null,
                   toolCallNames: [],
                 }));
                 break;
+              case 'agent:reasoning:delta': {
+                const reasoningDelta = payload as AgentEventMap['agent:reasoning:delta'];
+                setState((previous) => ({
+                  ...previous,
+                  status: 'thinking',
+                  streamingReasoning: previous.streamingReasoning + reasoningDelta.content,
+                }));
+                break;
+              }
               case 'agent:step:start': {
                 const stepStart = payload as AgentEventMap['agent:step:start'];
                 setState((previous) => ({ ...previous, currentStep: stepStart.step }));
@@ -218,8 +235,8 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                   messageCountBeforeTurnRef.current,
                   thoughtTimingRef.current.completedDurationsMs,
                 );
-                const uiMessages = newMessages.map(({ message, thoughtDurationMs }) =>
-                  messageToUI(message, thoughtDurationMs),
+                const uiMessages = newMessages.map(({ message, thoughtDurationMs, reasoningContent }) =>
+                  messageToUI(message, thoughtDurationMs, reasoningContent),
                 );
                 messagesRef.current = turnEnd.messages;
                 thoughtTimingRef.current = clearThoughtTiming(thoughtTimingRef.current);

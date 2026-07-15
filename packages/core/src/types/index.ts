@@ -165,6 +165,7 @@ export interface AgentEventMap {
   'agent:turn:start': { messages: Message[] };
   'agent:step:start': { step: number };
   'agent:thinking': { step: number };
+  'agent:reasoning:delta': { content: string };
   'agent:stream:delta': { content: string };
   'agent:tool_calls': { toolCalls: ToolCall[] };
   'agent:executing': { toolCalls: ToolCall[] };
